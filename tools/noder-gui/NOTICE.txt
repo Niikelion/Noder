@@ -1,0 +1,3 @@
+Every file inside resources directory is part of noder-gui project and is available under MIT license with exceptions stated below:
+
+Arimo font(resources/Arimo-Regular.ttf) was created by Steve Matteson and is available under Apache 2.0 license. (https://fonts.google.com/specimen/Arimo#standard-styles)
