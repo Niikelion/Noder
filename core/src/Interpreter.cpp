@@ -13,14 +13,16 @@ namespace Noder
 		resetInternals();
 		for (auto& output : outputs)
 		{
-			output.get()->reset();
+			if (output)
+				output.get()->reset();
 		}
 	}
 
 	void NodeInterpreter::NodeState::hardReset()
 	{
 		softReset();
-		internal.get()->reset();
+		if (internal)
+			internal.get()->reset();
 	}
 
 	State& NodeInterpreter::NodeState::Access::getState()
