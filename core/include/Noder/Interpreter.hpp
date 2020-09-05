@@ -12,7 +12,7 @@ namespace Noder
 	{
 		template<typename T> using Extract = typename T::type;
 		template<size_t...> struct sequence { using type = sequence; };
-		
+
 		template<typename T1, typename T2> struct combine;
 		template<size_t... I1, size_t... I2> struct combine<sequence<I1...>, sequence<I2...>> : sequence<I1..., (I2 + sizeof...(I1))...> {};
 		template<typename T1, typename T2> using Combine = Extract<combine<T1, T2>>;
@@ -24,8 +24,6 @@ namespace Noder
 		template<> struct sequence_generator<0> : sequence<> {};
 		template<> struct sequence_generator<1> : sequence<0> {};
 	}
-
-	class DLLACTION std::exception;
 
 	class DLLACTION NodeCycleException : public std::exception
 	{
@@ -47,6 +45,7 @@ namespace Noder
 			private:
 				Node* node;
 				NodeState* state;
+				std::unique_ptr<State>* scopedValue;
 			public:
 				template<typename T>T& getConfigValue()
 				{
@@ -58,14 +57,24 @@ namespace Noder
 				void redirectFlow(unsigned port);
 
 				void pushScope();
+				void pushScopedValue(std::unique_ptr<State>&& s);
+				template<typename T> void pushScopedValue(const T& v)
+				{
+					if (!*scopedValue)
+					{
+						*scopedValue = std::make_unique<State>(typeid(T),sizeof(T));
+						(*scopedValue)->emplaceValue<T>(v);
+					}
+				}
 
-				Access(Node* n, NodeState* s) : node(n), state(s) {}
+				std::unique_ptr<State> popScopedValue();
+
+				Access(Node* n, NodeState* s, std::unique_ptr<State>* scopedState) : node(n), state(s), scopedValue(scopedState) {}
 				Access(const Access&) = default;
 			};
 
 			std::vector<std::unique_ptr<State>> outputs;
 			std::unique_ptr<State> internal;
-			std::vector<std::unique_ptr<State>> internal_inputs;
 			unsigned targetFlowPort;
 			bool pushesScope;
 
@@ -73,7 +82,7 @@ namespace Noder
 			void softReset();
 			void hardReset();
 
-			NodeState() : outputs(), internal(), internal_inputs(), targetFlowPort(0), pushesScope(false) {}
+			NodeState() : outputs(), internal(), targetFlowPort(0), pushesScope(false) {}
 			NodeState(const NodeState&) = delete;
 			NodeState(NodeState&&) noexcept = default;
 		};
@@ -91,7 +100,8 @@ namespace Noder
 		std::unordered_set<Node*> nodesToReset;
 		std::unordered_map<Node*, NodeState> states;
 		std::unique_ptr<Enviroment> env;
-		std::unordered_map<std::string, std::function<void(NodeState::Access,const std::vector<State*>&, std::vector<std::unique_ptr<State>>&)>> mapping;
+		std::unordered_map<std::string, std::function<void(NodeState::Access, const std::vector<const State*>&, std::vector<std::unique_ptr<State>>&)>> mapping;
+		std::unique_ptr<State> scopedVariable;
 
 		void pushScope(Node* n);
 		Node* popScope();
@@ -99,29 +109,29 @@ namespace Noder
 		void calcNode(Node& endPoint, std::unordered_set<Node*>& visited, std::unordered_set<Node*>& toReset);
 
 		template<unsigned> static void unpackTypes(std::vector<Port>&) {}
-		template<unsigned tmp,typename T, typename... Args> static void unpackTypes(std::vector<Port>& p)
+		template<unsigned tmp, typename T, typename... Args> static void unpackTypes(std::vector<Port>& p)
 		{
 			p.emplace_back();
 			p.back().setType<T>();
-			unpackTypes<tmp,Args...>(p);
+			unpackTypes<tmp, Args...>(p);
 		}
 
-		template<unsigned i,typename... Args> static typename std::enable_if<i != 0>::type unpackTuple(std::vector<std::unique_ptr<State>>& outputs,const std::tuple<Args...>& t)
+		template<unsigned i, typename... Args> static typename std::enable_if<i != 0>::type unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t)
 		{
 			outputs[sizeof...(Args) - i]->setValue(std::get<sizeof...(Args) - i>(t));
-			unpackTuple<i - 1, Args...>(outputs,t);
+			unpackTuple<i - 1, Args...>(outputs, t);
 		}
 
-		template<unsigned i,typename... Args> static typename std::enable_if<i == 0>::type unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t) {}
-	
-		template<typename T,size_t I>static T& unpackArgument(const std::vector<State*>& args)
+		template<unsigned i, typename... Args> static typename std::enable_if<i == 0>::type unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t) {}
+
+		template<typename T, size_t I>static T& unpackArgument(const std::vector<const State*>& args)
 		{
-			return args[I]->getValue<T>();
+			return const_cast<State*>(args[I])->getValue<T>();
 		}
 
 		template<typename... Args1, typename... Args2, size_t... I> std::tuple<Args1...>static call_with_unpack(
 			const std::function<std::tuple<Args1...>(Args2...)>& f,
-			const std::vector<State*>& inputs,
+			const std::vector<const State*>& inputs,
 			_noder_hacks_::sequence<I...> i)
 		{
 			return (f(unpackArgument<Args2, I>(inputs)...));
@@ -130,13 +140,13 @@ namespace Noder
 		template<typename... Args1, typename... Args2, size_t... I> std::tuple<Args1...>static call_with_unpack_and_states(
 			const std::function<std::tuple<Args1...>(NodeState::Access, Args2...)>& f,
 			NodeState::Access access,
-			const std::vector<State*>& inputs,
+			const std::vector<const State*>& inputs,
 			_noder_hacks_::sequence<I...> i)
 		{
-			return (f(access,unpackArgument<Args2, I>(inputs)...));
+			return (f(access, unpackArgument<Args2, I>(inputs)...));
 		}
 
-		template<typename T, typename ...Args1, typename ...Args2> std::function<std::tuple<Args1...>(Args2...)>static functorWrapper(T* obj, std::tuple<Args1...>(T::* func)(Args2...) const)
+		template<typename T, typename ...Args1, typename ...Args2> std::function<std::tuple<Args1...>(Args2...)>static functorWrapper(const T* obj, std::tuple<Args1...>(T::* func)(Args2...) const)
 		{
 			return [func, obj](Args2&&... args) -> std::tuple<Args1...>
 			{
@@ -144,7 +154,7 @@ namespace Noder
 			};
 		}
 
-		template<typename T,typename R, typename ...Args> std::function<std::tuple<R>(Args...)>static functorWrapper(T* obj, R(T::* func)(Args...) const)
+		template<typename T, typename R, typename ...Args> std::function<std::tuple<R>(Args...)>static functorWrapper(const T* obj, R(T::* func)(Args...) const)
 		{
 			return [func, obj](Args&&... args) -> std::tuple<R>
 			{
@@ -152,7 +162,7 @@ namespace Noder
 			};
 		}
 
-		template<typename T, typename ...Args> std::function<std::tuple<>(Args...)>static functorWrapper(T* obj, void(T::* func)(Args...) const)
+		template<typename T, typename ...Args> std::function<std::tuple<>(Args...)>static functorWrapper(const T* obj, void(T::* func)(Args...) const)
 		{
 			return [func, obj](Args&&... args) -> std::tuple<>
 			{
@@ -167,50 +177,50 @@ namespace Noder
 		Node& createNode(NodeTemplate&);
 		NodeTemplate& createTemplate();
 
-		NodeTemplate& createTemplate(const std::string& name,const std::vector<Port>& inP,const std::vector<Port>& outP, const std::function<void(NodeState::Access, const std::vector<State*>&, std::vector<std::unique_ptr<State>>&)>&);
+		NodeTemplate& createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<void(NodeState::Access, const std::vector<const State*>&, std::vector<std::unique_ptr<State>>&)>&);
 
-		template<typename... Args1, typename... Args2>NodeTemplate& createTemplate(std::tuple<Args1...>(*f)(Args2...))
+		template<typename... Args1, typename... Args2>NodeTemplate& createTemplate(std::tuple<Args1...>(*f)(Args2...), const std::string& name = "")
 		{
-			return createTemplate(std::function<std::tuple<Args1...>(Args2...)>(f));
+			return createTemplate(std::function<std::tuple<Args1...>(Args2...)>(f), name);
 		}
 
-		template<typename T, typename R = decltype(&T::operator())>NodeTemplate& createTemplate(T& f)
+		template<typename T, typename R = decltype(&T::operator())>NodeTemplate& createTemplate(const T& f, const std::string& name = "")
 		{
-			return createTemplate(functorWrapper(&f, &T::operator()));
+			return createTemplate(functorWrapper(&f, &T::operator()), name);
 		}
 
-		template<typename... Args> NodeTemplate& createTemplate(void(*f)(Args...))
+		template<typename... Args> NodeTemplate& createTemplate(void(*f)(Args...), const std::string& name = "")
 		{
 			return createTemplate(std::function<std::tuple<>(Args...)>([f](Args... args)
 				{
 					f(args...);
 					return std::tuple<>();
-				}));
+				}), name);
 		}
 
-		template<typename T, typename... Args> NodeTemplate& createTemplate(T(*f)(Args...))
+		template<typename T, typename... Args> NodeTemplate& createTemplate(T(*f)(Args...), const std::string& name = "")
 		{
 			return createTemplate(std::function<std::tuple<T>(Args...)>([f](Args... args)
 				{
 					return std::make_tuple(f(args...));
-				}));
+				}), name);
 		}
 
-		template<typename... Args1, typename... Args2>NodeTemplate& createTemplate(const std::function<std::tuple<Args1...>(Args2...)>& f)
+		template<typename... Args1, typename... Args2>NodeTemplate& createTemplate(const std::function<std::tuple<Args1...>(Args2...)>& f, const std::string& name = "")
 		{
 			NodeTemplate& t = createTemplate();
 
-			unpackTypes<0,Args1...>(t.outputs);
-			unpackTypes<0,Args2...>(t.inputs);
+			unpackTypes<0, Args1...>(t.outputs);
+			unpackTypes<0, Args2...>(t.inputs);
 
-			std::string a = "__generated" + std::to_string(mapping.size());
+			std::string a = (name.length() == 0) ? ("__generated" + std::to_string(mapping.size())) : name;
 
-			setMapping(a, [f](NodeState::Access,const std::vector<State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) 
+			setMapping(a, [f](NodeState::Access, const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs)
 				{
-					std::tuple<Args1...> t((call_with_unpack(f,inputs,_noder_hacks_::index_sequence<sizeof...(Args2)>())));
-					unpackTuple<sizeof...(Args1)>(outputs,t);
+					std::tuple<Args1...> t((call_with_unpack(f, inputs, _noder_hacks_::index_sequence<sizeof...(Args2)>())));
+					unpackTuple<sizeof...(Args1)>(outputs, t);
 				});
-			
+
 			t.action = a;
 
 			return t;
@@ -220,43 +230,43 @@ namespace Noder
 
 
 
-		template<typename... Args1, typename... Args2>NodeTemplate& createTemplateWithStates(std::tuple<Args1...>(*f)(NodeState::Access,Args2...))
+		template<typename... Args1, typename... Args2>NodeTemplate& createTemplateWithStates(std::tuple<Args1...>(*f)(NodeState::Access, Args2...), const std::string& name = "")
 		{
-			return createTemplateWithStates(std::function<std::tuple<Args1...>(NodeState::Access,Args2...)>(f));
+			return createTemplateWithStates(std::function<std::tuple<Args1...>(NodeState::Access, Args2...)>(f), name);
 		}
 
-		template<typename T,typename R = decltype(&T::operator())>NodeTemplate& createTemplateWithStates(T& f)
+		template<typename T, typename R = decltype(&T::operator())>NodeTemplate& createTemplateWithStates(const T& f, const std::string& name = "")
 		{
-			return createTemplateWithStates(functorWrapper(&f,&T::operator()));
+			return createTemplateWithStates(functorWrapper(&f, &T::operator()), name);
 		}
 
-		template<typename... Args> NodeTemplate& createTemplateWithStates(void(*f)(NodeState::Access, Args...))
+		template<typename... Args> NodeTemplate& createTemplateWithStates(void(*f)(NodeState::Access, Args...), const std::string& name = "")
 		{
 			return createTemplateWithStates(std::function<std::tuple<>(NodeState::Access, Args...)>([f](NodeState::Access access, Args... args)
 				{
 					f(access, args...);
 					return std::tuple<>();
-				}));
+				}), name);
 		}
 
-		template<typename T, typename... Args> NodeTemplate& createTemplateWithStates(T(*f)(NodeState::Access, Args...))
+		template<typename T, typename... Args> NodeTemplate& createTemplateWithStates(T(*f)(NodeState::Access, Args...), const std::string& name = "")
 		{
 			return createTemplateWithStates(std::function<std::tuple<T>(NodeState::Access, Args...)>([f](NodeState::Access access, Args... args)
 				{
 					return std::make_tuple(f(access, args...));
-				}));
+				}), name);
 		}
 
-		template<typename... Args1, typename... Args2>NodeTemplate& createTemplateWithStates(const std::function<std::tuple<Args1...>(NodeState::Access, Args2...)>& f)
+		template<typename... Args1, typename... Args2>NodeTemplate& createTemplateWithStates(const std::function<std::tuple<Args1...>(NodeState::Access, Args2...)>& f, const std::string& name = "")
 		{
 			NodeTemplate& t = createTemplate();
 
 			unpackTypes<0, Args1...>(t.outputs);
 			unpackTypes<0, Args2...>(t.inputs);
 
-			std::string a = "__generated" + std::to_string(mapping.size());
+			std::string a = (name.length() == 0) ? ("__generated" + std::to_string(mapping.size())) : name;
 
-			setMapping(a, [f](NodeState::Access access, const std::vector<State*>& inputs, std::vector<std::unique_ptr<State>>& outputs)
+			setMapping(a, [f](NodeState::Access access, const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs)
 				{
 					std::tuple<Args1...> t((call_with_unpack_and_states(f, access, inputs, _noder_hacks_::index_sequence<sizeof...(Args2)>())));
 					unpackTuple<sizeof...(Args1)>(outputs, t);
@@ -267,12 +277,14 @@ namespace Noder
 			return t;
 		}
 
-		void setMapping(const std::string& s, const std::function<void(NodeState::Access,const std::vector<State*>&, std::vector<std::unique_ptr<State>>&)>& f);
+		void setMapping(const std::string& s, const std::function<void(NodeState::Access, const std::vector<const State*>&, std::vector<std::unique_ptr<State>>&)>& f);
 
 		NodeState* getNodeState(Node&);
 
 		std::unique_ptr<Enviroment> extractEnviroment();
 		std::unique_ptr<Enviroment> swapEnviroment(std::unique_ptr<Enviroment>&&);
+		Enviroment& getEnviroment();
+
 		void resetEnviroment();
 		void resetStates();
 		void resetState(Node* node);

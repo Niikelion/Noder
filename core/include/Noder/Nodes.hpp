@@ -6,11 +6,23 @@
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include <type_traits>
 
-#include "nodeutils.hpp"
+#include "NodeUtils.hpp"
+#include <parselib/XML/xml.hpp>
+#include <parselib/JSON/json.hpp>
 
 namespace Noder
 {
+	namespace _noder_hacks_
+	{
+		template<class...>struct types { using type = types; };
+		template<class T>struct tag { using type = T; };
+		template<class Tag>using type_t = typename Tag::type;
+	}
+
+	using namespace ParseLib;
+
 	class DLLACTION TypeMismatchException : public std::exception
 	{
 	private:
@@ -20,6 +32,62 @@ namespace Noder
 		TypeMismatchException(const std::type_index& source, const std::type_index& target) noexcept;
 	};
 
+	template<typename T, typename...> struct ValueSerializer
+	{
+		std::string serialize(const T& value)
+		{
+			return "";
+		}
+		T deserialize(const std::string& value)
+		{
+			return T();
+		}
+	};
+
+	template<typename T> struct ValueSerializer<T, std::enable_if_t<std::is_integral<T>::value>>
+	{
+		std::string serialize(const T& value)
+		{
+			return std::to_string(value);
+		}
+		T deserialize(const std::string& value)
+		{
+			return static_cast<T>(std::stoll(value));
+		}
+	};
+
+	template<typename T> struct ValueSerializer<T, std::enable_if_t<std::is_floating_point<T>::value>>
+	{
+		std::string serialize(const T& value)
+		{
+			return std::to_string(value);
+		}
+		T deserialize(const std::string& value)
+		{
+			return static_cast<T>(std::stold(value));
+		}
+	};
+
+	template<> struct ValueSerializer<std::string>
+	{
+		std::string serialize(const std::string& value)
+		{
+			return value;
+		}
+		std::string deserialize(const std::string& value)
+		{
+			return value;
+		}
+	};
+
+	template<> struct ValueSerializer<JSON::Value::Type>
+	{
+		std::string serialize(const JSON::Value::Type& value)
+		{
+			return JSON::stringify(value);
+		}
+	};
+
 	class DLLACTION State
 	{
 	private:
@@ -27,9 +95,24 @@ namespace Noder
 		void* pointer;
 		std::type_index info;
 		void(*deleter)(void*);
+		std::string(*serializer)(void*);
+		void(*deserializer)(void*&, char*, const std::string&);
 		template<typename T> static void deleterFunc(void* p)
 		{
 			reinterpret_cast<T*>(p)->~T();
+		}
+		template<typename T> static std::string serializerFunc(void* p)
+		{
+			return ValueSerializer<T>().serialize(*reinterpret_cast<T*>(p));
+		}
+		template<typename T> static void deserializerFunc(void*& p, char* buffer, const std::string& value)
+		{
+			if (p == nullptr)
+			{
+				p = new(buffer) T(ValueSerializer<T>().deserialize(value));
+			}
+			else
+				(*reinterpret_cast<T*>(p)) = ValueSerializer<T>().deserialize(value);
 		}
 	public:
 		template<typename T> void setValue(const T& value)
@@ -40,6 +123,8 @@ namespace Noder
 				{
 					pointer = new(data.data()) T(value);
 					deleter = deleterFunc<T>;
+					serializer = serializerFunc<T>;
+					deserializer = deserializerFunc<T>;
 				}
 				else
 					*reinterpret_cast<T*>(pointer) = value;
@@ -52,6 +137,8 @@ namespace Noder
 			{
 				pointer = new(data.data()) T(std::forward(args)...);
 				deleter = deleterFunc<T>;
+				serializer = serializerFunc<T>;
+				deserializer = deserializerFunc<T>;
 			}
 		}
 
@@ -63,6 +150,9 @@ namespace Noder
 		bool isReady() const noexcept;
 		void reset();
 
+		std::string serialize() const;
+		void deserialize(const std::string& value);
+
 		template<typename T> T& getValue()
 		{
 			if (checkType<T>())
@@ -71,7 +161,7 @@ namespace Noder
 			}
 			else
 			{
-				throw TypeMismatchException(info,typeid(T));
+				throw TypeMismatchException(info, typeid(T));
 			}
 		}
 
@@ -87,11 +177,11 @@ namespace Noder
 			}
 		}
 
-		template<typename T> State() : pointer(nullptr),deleter(nullptr), info(typeid(T))
+		template<typename T> State(_noder_hacks_::tag<T>) : pointer(nullptr), deleter(deleterFunc<T>), serializer(serializerFunc<T>), deserializer(deserializerFunc<T>), info(typeid(T))
 		{
 			data.resize(sizeof(T));
 		}
-		State(const std::type_index& type, size_t size) : pointer(nullptr), deleter(nullptr), info(type)
+		State(const std::type_index& type, size_t size) : pointer(nullptr), deleter(nullptr), serializer(nullptr), deserializer(nullptr), info(type)
 		{
 			data.resize(size);
 		}
@@ -107,7 +197,7 @@ namespace Noder
 	private:
 		template<typename T> static std::unique_ptr<State> pointStateFactory()
 		{
-			return std::make_unique<State>(typeid(T),sizeof(T));
+			return std::make_unique<State>(State(_noder_hacks_::tag<T>{}));
 		}
 		std::type_index type;
 		std::unique_ptr<State>(*factory)();
@@ -149,7 +239,7 @@ namespace Noder
 
 			ConfigData() : type(typeid(void)), size(0) {}
 		};
-		std::vector<Port> inputs,outputs;
+		std::vector<Port> inputs, outputs;
 		std::string action;
 		ConfigData config;
 		unsigned int flowInputPoints, flowOutputPoints;
@@ -187,7 +277,7 @@ namespace Noder
 
 			void connect(const PortWrapper&);
 
-			PortWrapper(const Node* n,unsigned p,bool i, bool f);
+			PortWrapper(const Node* n, unsigned p, bool i, bool f);
 			PortWrapper(const PortWrapper&) = default;
 
 			static PortWrapper voidPort();
@@ -218,6 +308,7 @@ namespace Noder
 	private:
 		NodeTemplate* base;
 		std::unique_ptr<State> config;
+		std::vector<std::unique_ptr<State>> inputValues;
 		std::unordered_map<unsigned, PortWrapper> inputPorts, flowOutputPorts;
 		std::unordered_map<unsigned, std::vector<PortWrapper>> outputPorts, flowInputPorts;
 		unsigned usedInputs;
@@ -225,12 +316,25 @@ namespace Noder
 		using PortType = PortTypeWrapper::Type;
 		State* getConfig();
 
-		bool connect(const PortWrapper& source,const PortWrapper& target) noexcept;
-		bool disconnect(const PortWrapper& source,const PortWrapper& target = PortWrapper::voidPort()) noexcept;
+		template<typename T> void setInputValue(unsigned id, const T& value)
+		{
+			if (id < inputValues.size())
+			{
+				inputValues[id] = base->inputs[id].createState();
+				inputValues[id]->emplaceValue<T>(value);
+			}
+		}
+
+		void deserializeInputValue(unsigned id, const std::string& value);
+
+		const PortState* getInputState(unsigned id) const;
+
+		bool connect(const PortWrapper& source, const PortWrapper& target) noexcept;
+		bool disconnect(const PortWrapper& source, const PortWrapper& target = PortWrapper::voidPort()) noexcept;
 
 		const NodeTemplate* getBase() const noexcept;
 
-		PortWrapper getPort(unsigned id,bool input,bool flow) const;
+		PortWrapper getPort(unsigned id, bool input, bool flow) const;
 
 		inline PortWrapper getFlowInputPort(unsigned id) const noexcept
 		{
@@ -238,15 +342,15 @@ namespace Noder
 		}
 		inline PortWrapper getFlowOutputPort(unsigned id) const noexcept
 		{
-			return getPort(id,false,true);
+			return getPort(id, false, true);
 		}
 		inline PortWrapper getInputPort(unsigned id) const noexcept
 		{
-			return getPort(id,true,false);
+			return getPort(id, true, false);
 		}
 		inline PortWrapper getOutputPort(unsigned id) const noexcept
 		{
-			return getPort(id,false,false);
+			return getPort(id, false, false);
 		}
 
 		inline PortWrapper getInputPortTarget(unsigned id) const
@@ -277,11 +381,22 @@ namespace Noder
 
 	class DLLACTION Enviroment
 	{
+	private:
+		//
 	public:
+		std::vector<std::unique_ptr<NodeTemplate>> nodeTemplates;
 		std::vector<std::unique_ptr<Node>> nodes;
-		std::vector<std::unique_ptr<NodeTemplate>> node_templates;
 
+
+		void clearNodes();
 		void clear();
+
+		std::unique_ptr<XML::Tag> exportToXML();
+		void importFromXML(const std::unique_ptr<XML::Tag>& tag);
+
+		Node& createNode(NodeTemplate& base);
+		NodeTemplate& createTemplate();
+		NodeTemplate& createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP);
 
 		Enviroment() = default;
 		Enviroment(const Enviroment&) = delete;

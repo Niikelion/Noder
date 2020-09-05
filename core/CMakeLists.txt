@@ -1,12 +1,17 @@
 set(LLVM_CONFIG   "" CACHE FILEPATH "Path to llvm-config")
 set(LLVM_CONFIG_D "" CACHE FILEPATH "Path to llvm-config(debug)")
+set(BUILD_TESTS false CACHE BOOL "Build core tests")
+
+find_package(parselib REQUIRED)
+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.9)
+         get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+elseif(CMAKE_CONFIGURATION_TYPES)
+         set(isMultiConfig TRUE)
+endif()
 
 if (LLVM_CONFIG STREQUAL "")
 	message(FATAL_ERROR "You must specify llvm-config path")
-endif()
-
-if (LLVM_CONFIG_D STREQUAL "")
-	message(FATAL_ERROR "You must specify llvm-config path for debug configuration")
 endif()
 
 execute_process(COMMAND ${LLVM_CONFIG}
@@ -23,29 +28,30 @@ execute_process(COMMAND ${LLVM_CONFIG}
 separate_arguments(sys_libs)
 
 execute_process(COMMAND ${LLVM_CONFIG}
-	--link-static --libnames codegen interpreter executionengine linker mcjit mcparser native tablegen
+	--link-static --libfiles codegen interpreter executionengine linker mcjit mcparser native tablegen
 	OUTPUT_VARIABLE llvm_libs OUTPUT_STRIP_TRAILING_WHITESPACE)
 separate_arguments(llvm_libs)
 
 execute_process(COMMAND ${LLVM_CONFIG}
-	--libdir
-	OUTPUT_VARIABLE llvm_lib_dir OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-execute_process(COMMAND ${LLVM_CONFIG_D}
-	--libdir
-	OUTPUT_VARIABLE llvm_lib_dir_d OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-execute_process(COMMAND ${LLVM_CONFIG}
 	--cppflags
 	OUTPUT_VARIABLE llvm_flags OUTPUT_STRIP_TRAILING_WHITESPACE)
-
 separate_arguments(llvm_flags)
 
-execute_process(COMMAND ${LLVM_CONFIG_D}
-	--cppflags
-	OUTPUT_VARIABLE llvm_flags_d OUTPUT_STRIP_TRAILING_WHITESPACE)
+if (isMultiConfig)
+	if (LLVM_CONFIG_D STREQUAL "")
+		message(FATAL_ERROR "You must specify llvm-config path for debug configuration")
+	endif()
+	execute_process(COMMAND ${LLVM_CONFIG_D}
+		--link-static --libfiles codegen interpreter executionengine linker mcjit mcparser native tablegen
+		OUTPUT_VARIABLE llvm_libs_d OUTPUT_STRIP_TRAILING_WHITESPACE)
+	separate_arguments(llvm_libs_d)
 
-separate_arguments(llvm_flags_d)
+	execute_process(COMMAND ${LLVM_CONFIG_D}
+		--cppflags
+		OUTPUT_VARIABLE llvm_flags_d OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+	separate_arguments(llvm_flags_d)
+endif()
 
 set(sources
 	src/Interpreter.cpp
@@ -60,19 +66,45 @@ set(headers
 	include/noder/NodeUtils.hpp
 )
 
-add_library(noder-core SHARED ${sources} ${headers})
+#dynamic library
+add_library(noder-core-dynamic SHARED ${sources} ${headers})
+target_link_libraries(noder-core-dynamic PRIVATE parselib::xml parselib::json)
+target_include_directories(noder-core-dynamic PRIVATE ${LLVM_INCLUDE} ${llvm_include_dir} ${llvm_root}/include)
+target_include_directories(noder-core-dynamic PUBLIC include)
+
+target_link_libraries(noder-core-dynamic PUBLIC ${sys_libs})
+if (isMultiConfig)
+	target_link_libraries(noder-core-dynamic LINK_PRIVATE "$<$<CONFIG:Debug>:${llvm_libs_d}>$<$<NOT:$<CONFIG:Debug>>:${llvm_libs}>")
+	target_compile_options(noder-core-dynamic PRIVATE "$<$<CONFIG:Debug>:${llvm_flags_d}>$<$<NOT:$<CONFIG:Debug>>:${llvm_flags}>")
+else()
+	target_compile_options(noder-core-dynamic PRIVATE ${llvm_flags})
+	target_link_libraries(noder-core-dynamic LINK_PRIVATE ${llvm_libs})
+endif()
+
+target_compile_definitions(noder-core-dynamic PRIVATE NODERCORE_DYNAMIC)
+target_compile_definitions(noder-core-dynamic PRIVATE NODERCORE_EXPORTS)
+
+install(TARGETS noder-core-dynamic DESTINATION lib)
+
+#static library
+add_library(noder-core ${sources} ${headers})
+target_link_libraries(noder-core PUBLIC parselib::xml parselib::json)
 target_include_directories(noder-core PRIVATE ${LLVM_INCLUDE} ${llvm_include_dir} ${llvm_root}/include)
 target_include_directories(noder-core PUBLIC include)
 
-target_link_libraries(noder-core LINK_PRIVATE ${sys_libs} ${llvm_libs})
-target_link_directories(noder-core PRIVATE "$<$<CONFIG:Debug>:${llvm_lib_dir_d}>$<$<NOT:$<CONFIG:Debug>>:${llvm_lib_dir}>")
-target_compile_options(noder-core PRIVATE "$<$<CONFIG:Debug>:${llvm_flags_d}>$<$<NOT:$<CONFIG:Debug>>:${llvm_flags}>")
-target_compile_definitions(noder-core PRIVATE nodercore_EXPORTS)
+target_link_libraries(noder-core PUBLIC ${sys_libs})
+if (isMultiConfig)
+	target_link_libraries(noder-core PUBLIC "$<$<CONFIG:Debug>:${llvm_libs_d}>$<$<NOT:$<CONFIG:Debug>>:${llvm_libs}>")
+	target_compile_options(noder-core PUBLIC "$<$<CONFIG:Debug>:${llvm_flags_d}>$<$<NOT:$<CONFIG:Debug>>:${llvm_flags}>")
+else()
+	target_compile_options(noder-core PUBLIC ${llvm_flags})
+	target_link_libraries(noder-core PUBLIC ${llvm_libs})
+endif()
 
 install(TARGETS noder-core DESTINATION lib)
-install(FILES ${headers} DESTINATION include)
 
-set(BUILD_TESTS false CACHE BOOL "Build core tests")
+#headers
+install(FILES ${headers} DESTINATION include)
 
 if (BUILD_TESTS)
 	add_subdirectory(tests)

@@ -23,10 +23,7 @@ add_executable(core-tests ${TEST_SOURCES} ${TESTS})
 target_link_libraries(core-tests PRIVATE Catch2::Catch2 noder-core)
 
 add_custom_command(TARGET core-tests POST_BUILD
-	COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		$<TARGET_FILE:noder-core>
-		$<TARGET_FILE_DIR:core-tests>
-	COMMAND core-tests [unit]
+	COMMAND core-tests [unit],[integration]
 )
 
-#set_target_properties(core-tests PROPERTIES FOLDER "Tests")
+set_target_properties(core-tests PROPERTIES FOLDER "Tests")

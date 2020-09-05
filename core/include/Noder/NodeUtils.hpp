@@ -17,10 +17,14 @@
 #define DLLIMPORT
 #endif
 
-#ifdef nodercore_EXPORTS
+#ifdef NODERCORE_DYNAMIC
+#ifdef NODERCORE_EXPORTS
 #define DLLACTION DLLEXPORT
 #else
 #define DLLACTION DLLIMPORT
+#endif
+#else
+#define DLLACTION
 #endif
 
 namespace Noder
@@ -35,7 +39,7 @@ namespace Noder
 			return msg.c_str();
 		}
 
-		InvalidPointerException(const std::type_index& type) : msg(std::string("Attempt to access null pointer of type: ")+type.name()) {};
+		InvalidPointerException(const std::type_index& type) : msg(std::string("Attempt to access null pointer of type: ") + type.name()) {};
 	};
 
 	template<typename T> class Pointer

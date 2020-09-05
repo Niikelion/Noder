@@ -57,7 +57,7 @@ struct impl_b: public NodeCore::impl
 
 		FunctionType* putsType =
 			FunctionType::get(builder.getInt32Ty(), argsRef, false);
-		FunctionCallee putsFunc = module->getOrInsertFunction("puts", putsType);
+		llvm::FunctionCallee putsFunc = module->getOrInsertFunction("puts", putsType);
 
 		builder.CreateCall(putsFunc,str);
 		builder.CreateRetVoid();

@@ -1,78 +1,146 @@
 ﻿#include <iostream>
 #include <cstdlib>
 #include <cmath>
+#include <unordered_set>
 
-#include <Noder/NodeCore.hpp>
+#include <cxxopts.hpp>
+#include <termcolor.hpp>
+#include <nhash.hpp>
 
-using namespace std;
+#include <Interpreter.hpp>
+#include <creator.hpp>
 
 template<typename T> using P = Noder::Pointer<T>;
 using Port = Noder::Node::PortType;
 using StateAccess = Noder::NodeInterpreter::NodeState::Access;
 
-string inputF()
+constexpr uint32_t operator"" _hashed(char const* s, size_t count)
 {
-    string c;
-    cin >> c;
-    return c;
+	return nhash::constant::fnv1a_32(s, count);
 }
 
-std::tuple<string,size_t> valueF(StateAccess access)
+uint32_t hash32(const std::string& s)
 {
-    string value = access.getConfigValue<string>();
-    return { value , value.size() };
+	return nhash::fnv1a_32(s);
 }
 
-void printF(string in)
+int main(int argc, const char** argv)
 {
-    cout << in << endl;
-}
+	std::unordered_set<std::string> modes = {
+		"interpreter"
+	};
 
-void printSizeT(size_t n)
-{
-    cout << n << endl;
-}
+	cxxopts::Options options("noder-cu", "Console utilities from Noder Toolkit");
 
-int main(int argc,char* argv[])
-{
-    Noder::NodeInterpreter interpreter;
-    
-    /*
-    P<Noder::NodeTemplate> t1 = &interpreter.createTemplateWithStates(valueF);
-    P<Noder::NodeTemplate> t2 = &interpreter.createTemplate(printF);
-    */
+	options.add_options()
+		("h,help", "Print usage")
+		("v,verbose", "Verbose output", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+		("no-definitions", "Start without loading default definitions", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+		("no-color", "Disable output coloring", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+		("modules", "Load specified modules", cxxopts::value<std::vector<std::string>>())
+		("mode", "Available modes: 'interpreter'", cxxopts::value<std::string>())
+		("c,creator", "Enter enviroment interactive creator before passing it to module", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+		("file", "Load project from file", cxxopts::value<std::string>())
+		("e,execute", "Execute enviroment", cxxopts::value<bool>()->default_value("true"))
+		("output", "Save enviroment to file", cxxopts::value<std::string>())
+		;
 
-    Noder::NodeTemplate& t1 = interpreter.createTemplateWithStates([](StateAccess access)
-        {
-            string value = access.getConfigValue<string>();
-            return std::make_tuple( value , value.size() );
-        });
-    Noder::NodeTemplate& t2 = interpreter.createTemplate([](string in)
-        {
-            cout << in << endl;
-        });
+	try
+	{
+		auto result = options.parse(argc, argv);
 
-    Noder::NodeTemplate& t3 = interpreter.createTemplate(printSizeT);
+		if (result.count("help"))
+		{
+			std::cout << options.help() << std::endl;
+		}
+		bool useColor = !result["no-color"].as<bool>();
+		bool verbose = result["verbose"].as<bool>();
 
-    t1.config.setType<string>();
+		if (result.count("mode") == 0)
+		{
+			if (verbose)
+			{
+				if (useColor)
+					std::cout << termcolor::yellow;
 
-    Noder::Node& n1 = interpreter.createNode(t1);
-    
-    Noder::Node& n2 = interpreter.createNode(t2);
+				std::cout << "No mode was specified." << std::endl;
 
-    Noder::Node& n3 = interpreter.createNode(t3);
+				if (useColor)
+					std::cout << termcolor::reset;
 
-    n1.getOutputPort(0) >> n2.getInputPort(0);
-    n1.getOutputPort(1) >> n3.getInputPort(0);
+			}
+			return 1;
+		}
 
-    n1.getConfig()->setValue<string>("test");
-    
-    interpreter.calcNode(n2);
-    interpreter.calcNode(n3);
-    interpreter.resetStates();
-    
-    n1.getConfig()->setValue<string>("test 2");
-    
-    interpreter.calcNode(n2);
-    interpreter.calcNode(n3);
+		std::string mode = result["mode"].as<std::string>();
+
+		if (modes.find(mode) == modes.end())
+		{
+			if (verbose)
+			{
+				if (useColor)
+					std::cout << termcolor::yellow;
+
+				std::cout << "Mode: \"" << mode << "\" is not supported.\n";
+
+				if (useColor)
+					std::cout << termcolor::reset;
+			}
+			return 1;
+		}
+
+		switch (hash32(mode))
+		{
+		case "interpreter"_hashed:
+		{
+			Noder::Tools::Interpreter interpreter;
+			if (!result["no-definitions"].as<bool>())
+			{
+				interpreter.loadDefaultDefinitions();
+			}
+
+			if (result.count("file"))
+			{
+				std::string file = result["file"].as<std::string>();
+				if (file.rfind(".nbf") == file.length() - std::string(".nbf").length())
+				{
+					//binary file
+				}
+				else
+				{
+					interpreter.loadEnviromentFromXmlFile(file);
+				}
+			}
+			
+			if (result["creator"].as<bool>())
+			{
+				if (verbose)
+					std::cout << "Running creator's python console.\nEnviroment is exposed via 'env' variable.\n";
+				Creator creator(interpreter.getEnviroment());
+				creator.run();
+			}
+
+			if (result.count("output"))
+			{
+				if (verbose)
+					std::cout << "Saving enviroment.\n";
+				interpreter.saveEnviromentToXmlFile(result["output"].as<std::string>());
+			}
+
+			if (result["execute"].as<bool>())
+			{
+				if (verbose)
+					std::cout << "Running interpreter.\n";
+				interpreter.prepare();
+				interpreter.run();
+			}
+			break;
+		}
+		}
+	}
+	catch (cxxopts::OptionException& e)
+	{
+		std::cerr << e.what() << std::endl;
+	}
+	return 0;
 }
