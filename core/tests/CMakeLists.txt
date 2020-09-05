@@ -20,7 +20,7 @@ set(TESTS
 APPEND_EXT(TESTS TESTS "cpp")
 
 add_executable(core-tests ${TEST_SOURCES} ${TESTS})
-target_link_libraries(core-tests PRIVATE Catch2::Catch2 noder-core)
+target_link_libraries(core-tests PRIVATE Catch2::Catch2 noder-interpreter)
 
 add_custom_command(TARGET core-tests POST_BUILD
 	COMMAND core-tests [unit],[integration]

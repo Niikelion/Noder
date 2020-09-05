@@ -1,7 +1,9 @@
 #include <Interpreter.hpp>
 #include <fstream>
 #include <cmath>
-#include "..\include\Interpreter.hpp"
+#include "Interpreter.hpp"
+
+#include <config.hpp>
 
 namespace Noder
 {
@@ -9,6 +11,11 @@ namespace Noder
 	{
 		void Interpreter::loadDefaultDefinitions()
 		{
+			loadDefinitions("cu-interpreter-base");
+		}
+		void Interpreter::loadDefinitions(const std::string& module)
+		{
+			//TODO: move to cu-interpreter
 			typedef float(*funcf2f)(float);
 			typedef float(*funcff2f)(float, float);
 

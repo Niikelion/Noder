@@ -15,7 +15,7 @@ set(NODER_CU_SOURCES
 add_executable(noder-cu ${NODER_CU_SOURCES})
 
 target_include_directories(noder-cu PRIVATE include)
-target_link_libraries(noder-cu PRIVATE noder-core cu-interpreter cxxopts termcolor nhash pybind11::embed pybind11::module pybind11::pybind11)
+target_link_libraries(noder-cu PRIVATE cu-interpreter cxxopts termcolor nhash pybind11::embed pybind11::module pybind11::pybind11)
 
 set_property(TARGET noder-cu PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:noder-cu>")
 set_target_properties(noder-cu PROPERTIES FOLDER "Tools/noder-cu")
@@ -36,5 +36,4 @@ add_custom_command(TARGET noder-cu POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
 		${NODER_PYTHON_PATH}/DLLs
 		$<TARGET_FILE_DIR:noder-cu>/DLLs
-	COMMAND cu-interpreter-tests [unit],[integration]
 )

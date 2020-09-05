@@ -1,0 +1,9 @@
+#pragma once
+
+namespace Noder
+{
+	namespace details
+	{
+		constexpr const char* dll_suffix = "@CMAKE_SHARED_LIBRARY_SUFFIX@";
+	}
+}

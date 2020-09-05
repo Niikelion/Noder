@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-#include <Noder/NodeCore.hpp>
+#include <Noder/Interpreter.hpp>
 
 using float_overload = float(*)(float);
 

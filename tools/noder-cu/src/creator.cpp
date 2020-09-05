@@ -20,7 +20,7 @@ PYBIND11_EMBEDDED_MODULE(noder, m)
 		.def(py::init<Noder::Enviroment*>())
 		.def("getNode", &Creator::PyNodeEnviromentWrapper::getNode)
 		.def("findNode", &Creator::PyNodeEnviromentWrapper::findNode)
-		.def("createNode", &Creator::PyNodeEnviromentWrapper::createNode)
+		.def("createNode", &Creator::PyNodeEnviromentWrapper::createNode, py::arg("type"), py::arg("name") = "")
 		;
 
 	py::class_<Creator::PyNodePortWrapper> portWrapper(m, "NodePortWrapper");
@@ -110,7 +110,8 @@ pybind11::object Creator::PyNodeEnviromentWrapper::createNode(const std::string&
 	if (it != templates.end())
 	{
 		Noder::Node* ret = &enviroment->createNode(*it->second);
-		nodes.emplace(name,ret);
+		if (name.length() > 0)
+			nodes.emplace(name,ret);
 		return py::cast<PyNodeWrapper>(PyNodeWrapper(ret));
 	}
 	return pybind11::none();

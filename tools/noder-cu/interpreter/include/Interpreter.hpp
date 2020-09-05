@@ -12,6 +12,7 @@ namespace Noder
 			NodeInterpreter inter;
 		public:
 			void loadDefaultDefinitions();
+			void loadDefinitions(const std::string& module);
 
 			void loadEnviromentFromXmlFile(const std::string& file);
 			void saveEnviromentToXmlFile(const std::string& file);
