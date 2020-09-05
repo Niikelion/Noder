@@ -1,15 +1,20 @@
 #pragma once
 
 #include <Noder/Interpreter.hpp>
+#include <slib.hpp>
+#include <string>
+#include <unordered_map>
 
 namespace Noder
 {
 	namespace Tools
 	{
+		using Module = Nlib::SharedLib;
 		class Interpreter
 		{
 		private:
 			NodeInterpreter inter;
+			std::unordered_map<std::string, Module> modules;
 		public:
 			void loadDefaultDefinitions();
 			void loadDefinitions(const std::string& module);
@@ -27,6 +32,8 @@ namespace Noder
 			void run();
 
 			void prepare();
+
+			~Interpreter();
 		};
 	}
 }

@@ -24,9 +24,11 @@ set(NODER_PYTHON_PATH ${PYTHON_EXECUTABLE})
 get_filename_component(NODER_PYTHON_PATH ${NODER_PYTHON_PATH} DIRECTORY)
 
 add_custom_command(TARGET noder-cu POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -E make_directory
+		$<TARGET_FILE_DIR:noder-cu>/modules/
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		$<TARGET_FILE_DIR:cu-interpreter-base>
-		$<TARGET_FILE_DIR:noder-cu>
+		$<TARGET_FILE:cu-interpreter-base>
+		$<TARGET_FILE_DIR:noder-cu>/modules/
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		${NODER_PYTHON_PATH}/${CMAKE_SHARED_LIBRARY_PREFIX}python${PYTHON_VERSION_MAJOR}${PYTHON_VERSION_MINOR}${CMAKE_SHARED_LIBRARY_SUFFIX}
 		$<TARGET_FILE_DIR:noder-cu>

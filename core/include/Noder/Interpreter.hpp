@@ -290,6 +290,8 @@ namespace Noder
 		void resetState(Node* node);
 		void softResetState(Node* node);
 
+		void resetMappings();
+
 		void runFrom(Node& startPoint);
 		void calcNode(Node& endPoint);
 

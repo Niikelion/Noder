@@ -1,9 +1,6 @@
-#include <Interpreter.hpp>
 #include <fstream>
 #include <cmath>
 #include "Interpreter.hpp"
-
-#include <config.hpp>
 
 namespace Noder
 {
@@ -15,17 +12,19 @@ namespace Noder
 		}
 		void Interpreter::loadDefinitions(const std::string& module)
 		{
-			//TODO: move to cu-interpreter
-			typedef float(*funcf2f)(float);
-			typedef float(*funcff2f)(float, float);
+			if (modules.count(module))
+				throw std::runtime_error("Module already loaded.");
+			Module m;
+			if (!m.load("modules/" + module))
+				throw std::runtime_error("Could not load module.");
 
-			inter.createTemplate([]() {return std::tuple<>(); }, "start").flowOutputPoints = 1;
-			NodeTemplate& printT = inter.createTemplate([](std::string value) { printf("%s\n", value.c_str()); }, "print");
-			printT.flowInputPoints = 1;
-			printT.flowOutputPoints = 1;
+			auto f = m.getFunction<void, Noder::NodeInterpreter&>("exportActions");
+			if (!f)
+				throw std::runtime_error("Could not find exportActions signature");
 
+			f(inter);
 
-			inter.createTemplate((funcff2f)pow, "pow");
+			modules.emplace(module, std::move(m));
 		}
 		void Interpreter::loadEnviromentFromXmlFile(const std::string& file)
 		{
@@ -97,6 +96,11 @@ namespace Noder
 		void Interpreter::prepare()
 		{
 			inter.buildStates();
+		}
+		Interpreter::~Interpreter()
+		{
+			getEnviroment()->clear();
+			inter.resetMappings();
 		}
 	}
 }

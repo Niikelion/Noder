@@ -157,6 +157,11 @@ namespace Noder
 		states.at(node).softReset();
 	}
 
+	void NodeInterpreter::resetMappings()
+	{
+		mapping.clear();
+	}
+
 	void NodeInterpreter::runFrom(Node& startPoint)
 	{
 		std::unordered_set<Node*>tmp, toReset;
