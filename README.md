@@ -6,6 +6,7 @@ Noder project is collection of tools designed to help you create applications an
 
 [Authors](#Authors)
 [Getting started](#Getting-started)
+[Using tools](#Using-tools)
 
 ## Authors
 
@@ -13,7 +14,7 @@ Noder project is collection of tools designed to help you create applications an
 
 ## Getting started
 
-### Building Noder tools
+### Building Noder
 
 Currently Noder only includes console utilities (noder-cu) and only supports interpreter mode.
 
@@ -45,6 +46,25 @@ Enabled tools building. Defaults to `FALSE`.
 BUILD_TESTS:BOOL
 ```
 Build and run tests for Noder components. Defaults to `FALSE`
+
+```
+LLVM_CONFIG:FILEPATH
+```
+Specifies path to llvm_config executable. Can be combined with `LLVM_CONFIG_D` for the cmake's multigenerators.
+
+```
+LLVM_CONFIG_D:FILEPATH
+```
+Specifies path to llvm_config executable for debug builds if using the cmake's multigenerators.
+
+# Using tools
+
+## Noder-cu
+
+Run for command list:
+```sh
+noder-cu -h
+```
 
 ## License
 
