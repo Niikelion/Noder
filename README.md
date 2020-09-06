@@ -1,27 +1,50 @@
 # Noder — Node toolkit
 
-Noder project is collection of tools designed to help you create applications and libraries using nodes instead of code and to allow node execution and compilation from code.
+Noder project is collection of tools designed to help you create applications and libraries using nodes instead of code and allows node execution and compilation from code.
+
+## Contents
+
+[Authors](#Authors)
+[Getting started](#Getting-started)
 
 ## Authors
 
 - Michał Osiński(Niikelion) - nicraft@tlen.pl
 
-## Noder Gui(not implemented)
+## Getting started
 
-Visual tool for creating node programs. Provides functionality to create projects, interpret nodes on the fly and compile them to binary form.
+### Building Noder tools
 
-## Noder Command Utils(not implemented)
+Currently Noder only includes console utilities (noder-cu) and only supports interpreter mode.
 
-Command line tool for creating node programs. Provides same functionality as Noder Gui and operates on same projects.
+Build dependencies:
+| Module/Tool | Dependencies |
+| ----------- | ------------ |
+| Core(always included) | [Parselib](https://github.com/Niikelion/ParseLib) |
+| Interpreter(enabled via `NODER_MODULES`) | Core |
+| Compiler(enabled via `NODER_MODULES`) | Core, LLVM |
+| noder-cu(enabled via `BUILD_TOOLS`) | Interpreter, pybind11 |
 
-## Noder Core
+Building all tools using cmake:
+```sh
+$ cmake <path_to_sources> -DBUILD_TOOLS=TRUE -DNODER_MODULES="interpreter"
+```
 
-Core library that is used in every tool from Noder toolkit. Can be integrated into C++ projects to minimize overhead introduced by external command line tools.
-Provides both interpreter and compiler utilities and allows transfer of node enviroment between them.
+Cmake options:
+```
+NODER_MODULES:STRING
+```
+Specifies modules to build separated by `;`. Available modules: `interpreter,compiler`. `all` is equivalent to `interpreter;compiler`. Defaults to `all`.
 
-## Bindings to other languages(not implemented)
+```
+BUILD_TOOLS:BOOL
+```
+Enabled tools building. Defaults to `FALSE`.
 
-Shared library for bindings exposes C style API for Noder Core that can be used to create bindings to other languages.
+```
+BUILD_TESTS:BOOL
+```
+Build and run tests for Noder components. Defaults to `FALSE`
 
 ## License
 
