@@ -42,6 +42,10 @@ namespace Noder
 		{
 			return T();
 		}
+		T clone(const T& value)
+		{
+			return value;
+		}
 	};
 
 	template<typename T> struct ValueSerializer<T, std::enable_if_t<std::is_integral<T>::value>>
@@ -53,6 +57,10 @@ namespace Noder
 		T deserialize(const std::string& value)
 		{
 			return static_cast<T>(std::stoll(value));
+		}
+		T clone(const T& value)
+		{
+			return value;
 		}
 	};
 
@@ -66,6 +74,10 @@ namespace Noder
 		{
 			return static_cast<T>(std::stold(value));
 		}
+		T clone(const T& value)
+		{
+			return value;
+		}
 	};
 
 	template<> struct ValueSerializer<std::string>
@@ -78,6 +90,10 @@ namespace Noder
 		{
 			return value;
 		}
+		std::string clone(const std::string& value)
+		{
+			return value;
+		}
 	};
 
 	template<> struct ValueSerializer<JSON::Value::Type>
@@ -85,6 +101,10 @@ namespace Noder
 		std::string serialize(const JSON::Value::Type& value)
 		{
 			return JSON::stringify(value);
+		}
+		JSON::Value::Type deserialize(const std::string& value)
+		{
+			return JSON::parse(value);
 		}
 	};
 
@@ -135,7 +155,7 @@ namespace Noder
 		{
 			if (pointer == nullptr && checkType<T>())
 			{
-				pointer = new(data.data()) T(std::forward(args)...);
+				pointer = new(data.data()) T(std::forward<Args>(args)...);
 				deleter = deleterFunc<T>;
 				serializer = serializerFunc<T>;
 				deserializer = deserializerFunc<T>;
