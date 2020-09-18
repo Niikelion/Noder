@@ -33,6 +33,13 @@ void printString(StateAccess access,std::string s)
 	access.getConfigValue<std::stringstream>() << s;
 }
 
+struct NotSerializableType
+{
+	NotSerializableType(int a) {}
+};
+
+NODERNOSERIALIZATION(NotSerializableType);
+
 TEST_CASE("Interpreter - node creation and execution", "[unit],[interpreter]")
 {
 	const std::string str = "test";

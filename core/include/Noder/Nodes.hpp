@@ -7,10 +7,30 @@
 #include <memory>
 #include <unordered_map>
 #include <type_traits>
+#include <stdexcept>
 
 #include "NodeUtils.hpp"
 #include <parselib/XML/xml.hpp>
 #include <parselib/JSON/json.hpp>
+
+#define NODERNOSERIALIZATION(type) template<> struct Noder::ValueSerializer<type>\
+{\
+	std::string serialize(const type& value)\
+	{\
+		throw std::logic_error("Serialization is disabled for #type");\
+		return "";\
+	}\
+	type deserialize(const std::string& value)\
+	{\
+		throw std::logic_error("Serialization is disabled for #type");\
+		return *static_cast<type*>(nullptr);\
+	}\
+	type clone(const type& value)\
+	{\
+		throw std::logic_error("Serialization is disabled for #type");\
+		return value;\
+	}\
+}
 
 namespace Noder
 {

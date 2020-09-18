@@ -741,7 +741,7 @@ namespace Noder
 												auto it = mapping.find(targetId.val);
 												if (it != mapping.end())
 												{
-													n->getFlowOutputPort(p).connect(it->second->getFlowInputPort(pT));
+													n->getFlowOutputPort(static_cast<unsigned>(p)).connect(it->second->getFlowInputPort(static_cast<unsigned>(pT)));
 												}
 											}
 										}
@@ -753,7 +753,7 @@ namespace Noder
 												if (port.exists())
 												{
 													size_t p = std::stoull(port.val);
-													n->deserializeInputValue(p, portTag->formatContents(true));
+													n->deserializeInputValue(static_cast<unsigned>(p), portTag->formatContents(true));
 												}
 											}
 											else
@@ -767,7 +767,7 @@ namespace Noder
 													auto it = mapping.find(targetId.val);
 													if (it != mapping.end())
 													{
-														n->getInputPort(p).connect(it->second->getOutputPort(pT));
+														n->getInputPort(static_cast<unsigned>(p)).connect(it->second->getOutputPort(static_cast<unsigned>(pT)));
 													}
 												}
 											}
