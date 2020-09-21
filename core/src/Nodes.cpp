@@ -562,7 +562,7 @@ namespace Noder
 	{
 		usedInputs = 0;
 		base = nodeTemplate;
-		config = std::make_unique<State>(base->config.getType(), base->config.getSize());
+		config = base->config.createState();
 		inputValues.resize(base->inputs.size());
 	}
 

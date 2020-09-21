@@ -13,21 +13,18 @@
 #include <parselib/XML/xml.hpp>
 #include <parselib/JSON/json.hpp>
 
-#define NODERNOSERIALIZATION(type) template<> struct Noder::ValueSerializer<type>\
+#define NoderDefaultSerializationFor(T) template<> struct Noder::ValueSerializer<T>: std::true_type\
 {\
-	std::string serialize(const type& value)\
+	std::string serialize(const T& value)\
 	{\
-		throw std::logic_error("Serialization is disabled for #type");\
-		return "";\
+		return Noder::_noder_hacks_::details::SerializeMethodWrapper<T>::toString(value);\
 	}\
-	type deserialize(const std::string& value)\
+	T deserialize(const std::string& value)\
 	{\
-		throw std::logic_error("Serialization is disabled for #type");\
-		return *static_cast<type*>(nullptr);\
+		return Noder::_noder_hacks_::details::DeserializeMethodWrapper<T>::deserialize(value);\
 	}\
-	type clone(const type& value)\
+	T clone(const T& value)\
 	{\
-		throw std::logic_error("Serialization is disabled for #type");\
 		return value;\
 	}\
 }
@@ -39,6 +36,148 @@ namespace Noder
 		template<class...>struct types { using type = types; };
 		template<class T>struct tag { using type = T; };
 		template<class Tag>using type_t = typename Tag::type;
+
+		namespace details
+		{
+			//serialize method
+			template<typename T, typename = void> struct has_serialize_method : std::false_type {};
+			template<typename T> struct has_serialize_method<T, std::enable_if<std::is_same<decltype(std::declval<const T&>().serialize()), std::string>::type::value>> : std::true_type {};
+
+			template<typename T, typename = void> struct has_serialize_function : std::false_type {};
+			template<typename T> struct has_serialize_function<T, std::enable_if_t<std::is_same<decltype(serialize(std::declval<const T&>())), std::string>::type::value>> : std::true_type {};
+
+			template<typename T, typename = void> struct has_to_string_method : std::false_type {};
+			template<typename T> struct has_to_string_method<T, std::enable_if_t<std::is_same<decltype(std::declval<const T&>().to_string()), std::string>::type::value>> : std::true_type {};
+
+			template<typename T, typename = void> struct has_toString_method : std::false_type {};
+			template<typename T> struct has_toString_method<T, std::enable_if_t<std::is_same<decltype(std::declval<const T&>().toString()), std::string>::type::value>> : std::true_type {};
+
+			
+			template<typename T, typename = void> struct has_to_string_function : std::false_type {};
+			template<typename T> struct has_to_string_function<T, std::enable_if_t<std::is_same<decltype(std::to_string(std::declval<const T&>())), std::string>::type::value>> : std::true_type {};
+			template<typename T> struct has_to_string_function<T, std::enable_if_t<std::is_same<decltype(to_string(std::declval<const T&>())), std::string>::type::value>> : std::true_type {};
+
+			template<typename T, typename = void> struct SerializeMethodWrapper
+			{
+				static std::string toString(const T& value)
+				{
+					return "";
+				}
+			};
+
+			template<typename T> struct SerializeMethodWrapper<T, std::enable_if_t<
+				has_serialize_method<T>::value
+				>>
+			{
+				static std::string toString(const T& value)
+				{
+					return value.serialize();
+				}
+			};
+
+			template<typename T> using serialize_function_pre_cond = std::integral_constant<bool,!has_serialize_method<T>::value>;
+			
+			template<typename T> struct SerializeMethodWrapper<T, std::enable_if_t<
+				serialize_function_pre_cond<T>::value && has_to_string_method<T>::value
+				>>
+			{
+				static std::string toString(const T& value)
+				{
+					return serialize(value);
+				}
+			};
+
+			template<typename T> using to_string_method_pre_cond = std::integral_constant<bool, serialize_function_pre_cond<T>::value && !has_serialize_function<T>::value>;
+
+			template<typename T> struct SerializeMethodWrapper<T, std::enable_if_t<
+				to_string_method_pre_cond<T>::value && has_to_string_method<T>::value
+				>>
+			{
+				static std::string toString(const T& value)
+				{
+					return value.to_string();
+				}
+			};
+
+			template<typename T> using toString_method_pre_cond = std::integral_constant<bool, to_string_method_pre_cond<T>::value && !has_to_string_method<T>::value>;
+
+			template<typename T> struct SerializeMethodWrapper<T, std::enable_if_t<
+				toString_method_pre_cond<T>::value && has_toString_method<T>::value
+				>>
+			{
+				static std::string toString(const T& value)
+				{
+					return value.toString();
+				}
+			};
+
+			template<typename T> using to_string_function_pre_cond = std::integral_constant<bool, toString_method_pre_cond<T>::value && !has_toString_method<T>::value>;
+
+			template<typename T> struct SerializeMethodWrapper < T, std::enable_if_t<
+				to_string_function_pre_cond<T>::value && has_to_string_function<T>::value
+				>>
+			{
+				static std::string toString(const T& value)
+				{
+					using namespace std;
+					return to_string(value);
+				}
+			};
+			//deserialize method
+			template<typename T, typename = void> struct has_deserialize_constructor : std::false_type {};
+			template<typename T> struct has_deserialize_constructor<T, std::enable_if_t<std::is_same<decltype(T(std::string())), T>::type::value>> : std::true_type {};
+		
+			template<typename T, typename = void> struct has_deserialize_method : std::false_type {};
+			template<typename T> struct has_deserialize_method<T, std::enable_if_t<std::is_same<decltype(std::declval<T&>().deserialize(std::declval<const std::string&>())), void>::type::value>> : std::true_type {};
+
+			template<typename T, typename = void> struct has_deserialize_function : std::false_type {};
+			template<typename T> struct has_deserialize_function<T, std::enable_if_t<std::is_same<decltype(deserialize(std::declval<T&>(),std::declval<const std::string&>())), void>::type::value>> : std::true_type {};
+		
+			template<typename T, typename = void> struct DeserializeMethodWrapper
+			{
+				static T deserialize(const std::string& source)
+				{
+					return T();
+				}
+			};
+
+			template<typename T> struct DeserializeMethodWrapper<T, std::enable_if_t<
+				has_deserialize_method<T>::value
+				>>
+			{
+				static T deserialize(const std::string& source)
+				{
+					T value;
+					value.deserialize(source);
+					return std::move(value);
+				}
+			};
+
+			template<typename T> struct DeserializeMethodWrapper<T, std::enable_if_t<
+				!has_deserialize_method<T>::value&&
+				has_deserialize_function<T>::value
+				>>
+			{
+				static T deserialize(const std::string& source)
+				{
+					T value;
+					deserialize(value, source);
+					return std::move(value);
+				}
+			};
+
+			template<typename T> struct DeserializeMethodWrapper<T,std::enable_if_t<
+				!has_deserialize_method<T>::value &&
+				!has_deserialize_function<T>::value &&
+				has_deserialize_constructor<T>::value
+				>>
+			{
+				static T deserialize(const std::string& source)
+				{
+					return T(source);
+				}
+			};
+		}
 	}
 
 	using namespace ParseLib;
@@ -52,23 +191,19 @@ namespace Noder
 		TypeMismatchException(const std::type_index& source, const std::type_index& target) noexcept;
 	};
 
-	template<typename T, typename...> struct ValueSerializer
-	{
-		std::string serialize(const T& value)
-		{
-			return "";
-		}
-		T deserialize(const std::string& value)
-		{
-			return T();
-		}
-		T clone(const T& value)
-		{
-			return value;
-		}
-	};
+	template<typename T, typename = void> struct ValueSerializer : std::false_type {};
 
-	template<typename T> struct ValueSerializer<T, std::enable_if_t<std::is_integral<T>::value>>
+	template<typename T> bool supportsSerialization(const T& t)
+	{
+		return ValueSerializer<T>::value;
+	}
+
+	template<typename T> bool supportsSerialization()
+	{
+		return ValueSerializer<T>::value;
+	}
+
+	template<typename T> struct ValueSerializer<T, std::enable_if_t<std::is_integral<T>::value>> : std::true_type
 	{
 		std::string serialize(const T& value)
 		{
@@ -84,7 +219,7 @@ namespace Noder
 		}
 	};
 
-	template<typename T> struct ValueSerializer<T, std::enable_if_t<std::is_floating_point<T>::value>>
+	template<typename T> struct ValueSerializer<T, std::enable_if_t<std::is_floating_point<T>::value>> : std::true_type
 	{
 		std::string serialize(const T& value)
 		{
@@ -100,7 +235,7 @@ namespace Noder
 		}
 	};
 
-	template<> struct ValueSerializer<std::string>
+	template<> struct ValueSerializer<std::string> : std::true_type
 	{
 		std::string serialize(const std::string& value)
 		{
@@ -116,7 +251,7 @@ namespace Noder
 		}
 	};
 
-	template<> struct ValueSerializer<JSON::Value::Type>
+	template<> struct ValueSerializer<JSON::Value::Type> : std::true_type
 	{
 		std::string serialize(const JSON::Value::Type& value)
 		{
@@ -137,23 +272,44 @@ namespace Noder
 		void(*deleter)(void*);
 		std::string(*serializer)(void*);
 		void(*deserializer)(void*&, char*, const std::string&);
-		template<typename T> static void deleterFunc(void* p)
+
+		template<typename T, typename Enabled = void> struct funcProvider
 		{
-			reinterpret_cast<T*>(p)->~T();
-		}
-		template<typename T> static std::string serializerFunc(void* p)
-		{
-			return ValueSerializer<T>().serialize(*reinterpret_cast<T*>(p));
-		}
-		template<typename T> static void deserializerFunc(void*& p, char* buffer, const std::string& value)
-		{
-			if (p == nullptr)
+			static void deleterFunc(void* p)
 			{
-				p = new(buffer) T(ValueSerializer<T>().deserialize(value));
+				reinterpret_cast<T*>(p)->~T();
 			}
-			else
-				(*reinterpret_cast<T*>(p)) = ValueSerializer<T>().deserialize(value);
-		}
+			static std::string serializerFunc(void* p)
+			{
+				throw std::logic_error(std::string("Serialization is disabled for type ") + typeid(T).name());
+				return "";
+			}
+			static void deserializerFunc(void*& p, char* buffer, const std::string& value)
+			{
+				throw std::logic_error(std::string("Serialization is disabled for type ") + typeid(T).name());
+			}
+		};
+
+		template<typename T> struct funcProvider<T, std::enable_if_t<ValueSerializer<T>::value>>
+		{
+			static void deleterFunc(void* p)
+			{
+				reinterpret_cast<T*>(p)->~T();
+			}
+			static std::string serializerFunc(void* p)
+			{
+				return ValueSerializer<T>().serialize(*reinterpret_cast<T*>(p));
+			}
+			static void deserializerFunc(void*& p, char* buffer, const std::string& value)
+			{
+				if (p == nullptr)
+				{
+					p = new(buffer) T(ValueSerializer<T>().deserialize(value));
+				}
+				else
+					(*reinterpret_cast<T*>(p)) = ValueSerializer<T>().deserialize(value);
+			}
+		};
 	public:
 		template<typename T> void setValue(const T& value)
 		{
@@ -162,9 +318,9 @@ namespace Noder
 				if (pointer == nullptr)
 				{
 					pointer = new(data.data()) T(value);
-					deleter = deleterFunc<T>;
-					serializer = serializerFunc<T>;
-					deserializer = deserializerFunc<T>;
+					deleter = funcProvider<T>::deleterFunc;
+					serializer = funcProvider<T>::serializerFunc;
+					deserializer = funcProvider<T>::deserializerFunc;
 				}
 				else
 					*reinterpret_cast<T*>(pointer) = value;
@@ -176,9 +332,9 @@ namespace Noder
 			if (pointer == nullptr && checkType<T>())
 			{
 				pointer = new(data.data()) T(std::forward<Args>(args)...);
-				deleter = deleterFunc<T>;
-				serializer = serializerFunc<T>;
-				deserializer = deserializerFunc<T>;
+				deleter = funcProvider<T>::deleterFunc;
+				serializer = funcProvider<T>::serializerFunc;
+				deserializer = funcProvider<T>::deserializerFunc;
 			}
 		}
 
@@ -217,7 +373,11 @@ namespace Noder
 			}
 		}
 
-		template<typename T> State(_noder_hacks_::tag<T>) : pointer(nullptr), deleter(deleterFunc<T>), serializer(serializerFunc<T>), deserializer(deserializerFunc<T>), info(typeid(T))
+		template<typename T> State(_noder_hacks_::tag<T>) : pointer(nullptr),
+			deleter(funcProvider<T>::deleterFunc),
+			serializer(funcProvider<T>::serializerFunc),
+			deserializer(funcProvider<T>::deserializerFunc),
+			info(typeid(T))
 		{
 			data.resize(sizeof(T));
 		}
@@ -258,30 +418,9 @@ namespace Noder
 	class DLLACTION NodeTemplate
 	{
 	public:
-		class DLLACTION  ConfigData
-		{
-		private:
-			std::type_index type;
-			size_t size;
-		public:
-			std::type_index getType() const {
-				return type;
-			}
-
-			size_t getSize() const noexcept {
-				return size;
-			}
-
-			template<typename T> void setType() {
-				type = typeid(T);
-				size = sizeof(T);
-			}
-
-			ConfigData() : type(typeid(void)), size(0) {}
-		};
 		std::vector<Port> inputs, outputs;
 		std::string action;
-		ConfigData config;
+		Port config;
 		unsigned int flowInputPoints, flowOutputPoints;
 
 		bool isFlowNode() const noexcept;
