@@ -15,7 +15,7 @@ namespace Noder
 			if (modules.count(module))
 				throw std::runtime_error("Module already loaded.");
 			Module m;
-			if (!m.load("modules/" + module))
+			if (!m.load("modules/" + module + m.getFileSuffix()))
 				throw std::runtime_error("Could not load module.");
 
 			auto f = m.getFunction<void, Noder::NodeInterpreter&>("exportActions");

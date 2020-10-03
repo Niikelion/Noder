@@ -23,19 +23,24 @@ set_target_properties(noder-cu PROPERTIES FOLDER "Tools/noder-cu")
 set(NODER_PYTHON_PATH ${PYTHON_EXECUTABLE})
 get_filename_component(NODER_PYTHON_PATH ${NODER_PYTHON_PATH} DIRECTORY)
 
+if (WIN32)
+	add_custom_command(TARGET noder-cu POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+			${NODER_PYTHON_PATH}/${CMAKE_SHARED_LIBRARY_PREFIX}python${PYTHON_VERSION_MAJOR}${PYTHON_VERSION_MINOR}${CMAKE_SHARED_LIBRARY_SUFFIX}
+			$<TARGET_FILE_DIR:noder-cu>
+		COMMAND ${CMAKE_COMMAND} -E copy_directory
+			${NODER_PYTHON_PATH}/Lib
+			$<TARGET_FILE_DIR:noder-cu>/Lib
+		COMMAND ${CMAKE_COMMAND} -E copy_directory
+			${NODER_PYTHON_PATH}/DLLs
+			$<TARGET_FILE_DIR:noder-cu>/DLLs
+	)
+endif()
+
 add_custom_command(TARGET noder-cu POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E make_directory
 		$<TARGET_FILE_DIR:noder-cu>/modules/
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		$<TARGET_FILE:cu-interpreter-base>
 		$<TARGET_FILE_DIR:noder-cu>/modules/
-	COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		${NODER_PYTHON_PATH}/${CMAKE_SHARED_LIBRARY_PREFIX}python${PYTHON_VERSION_MAJOR}${PYTHON_VERSION_MINOR}${CMAKE_SHARED_LIBRARY_SUFFIX}
-		$<TARGET_FILE_DIR:noder-cu>
-	COMMAND ${CMAKE_COMMAND} -E copy_directory
-		${NODER_PYTHON_PATH}/Lib
-		$<TARGET_FILE_DIR:noder-cu>/Lib
-	COMMAND ${CMAKE_COMMAND} -E copy_directory
-		${NODER_PYTHON_PATH}/DLLs
-		$<TARGET_FILE_DIR:noder-cu>/DLLs
 )

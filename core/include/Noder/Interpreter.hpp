@@ -198,7 +198,7 @@ namespace Noder
 		public:
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
-				outputs.back()->setValue<Ret>(UnpackCaller<Ret(Args...)>::call(this, &ObjectNodeState<Ret(Args...)::calculateWrapper>, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
+				outputs.back()->setValue<Ret>(UnpackCaller<Ret(Args...)>::call(this, &ObjectNodeState<Ret(Args...)>::calculateWrapper, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
 			}
 
 			virtual Ret calculate(Args...) = 0;

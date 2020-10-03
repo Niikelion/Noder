@@ -98,6 +98,7 @@ install(DIRECTORY include/Noder DESTINATION include)
 #core library
 
 add_library(noder-core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
+set_target_properties(noder-core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(noder-core PUBLIC parselib::xml parselib::json)
 target_include_directories(noder-core PUBLIC include)
 
@@ -111,6 +112,7 @@ endif()
 #interpreter module
 if ("interpreter" IN_LIST NODER_MODULES)
 	add_library(noder-interpreter STATIC ${INTERPRETER_SOURCES} ${INTERPRETER_HEADERS})
+	set_target_properties(noder-interpreter PROPERTIES POSITION_INDEPENDENT_CODE ON)
 	target_link_libraries(noder-interpreter PUBLIC noder-core)
 	target_include_directories(noder-interpreter PUBLIC include)
 	
@@ -124,6 +126,7 @@ endif()
 #compiler module
 if ("compiler" IN_LIST NODER_MODULES)
 	add_library(noder-compiler STATIC ${COMPILER_SOURCES} ${COMPILER_HEADERS})
+	set_target_properties(noder-compiler PROPERTIES POSITION_INDEPENDENT_CODE ON)
 	target_link_libraries(noder-compiler PUBLIC noder-core ${sys_libs})
 	target_include_directories(noder-compiler PUBLIC include)
 	target_include_directories(noder-compiler PRIVATE ${LLVM_INCLUDE} ${llvm_include_dir} ${llvm_root}/include)

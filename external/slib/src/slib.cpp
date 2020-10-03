@@ -50,7 +50,7 @@ namespace Nlib
     {
         if (handle != nullptr)
             free();
-        handle = dlopen(path.c_str());
+        handle = dlopen(path.c_str(),RTLD_LAZY | RTLD_LOCAL);
         if (!handle)
         {
             handle = nullptr;
