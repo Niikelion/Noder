@@ -30,9 +30,9 @@ set(COMPILER_HEADERS
 #config variables
 
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.9)
-         get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+	get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 elseif(CMAKE_CONFIGURATION_TYPES)
-         set(isMultiConfig TRUE)
+	set(isMultiConfig TRUE)
 endif()
 
 set(NODER_MODULES "all" CACHE STRING "selected modules or 'all'")
@@ -102,7 +102,12 @@ target_link_libraries(noder-core PUBLIC parselib::xml parselib::json)
 target_include_directories(noder-core PUBLIC include)
 
 set_target_properties(noder-core PROPERTIES FOLDER "Libs")
-install(TARGETS noder-core DESTINATION lib)
+if (isMultiConfig)
+	install(TARGETS noder-core DESTINATION "$<CONFIG>/lib")
+else()
+	install(TARGETS noder-core DESTINATION ${CMAKE_BUILD_TYPE}/lib)
+endif()
+
 #interpreter module
 if ("interpreter" IN_LIST NODER_MODULES)
 	add_library(noder-interpreter STATIC ${INTERPRETER_SOURCES} ${INTERPRETER_HEADERS})
@@ -110,7 +115,11 @@ if ("interpreter" IN_LIST NODER_MODULES)
 	target_include_directories(noder-interpreter PUBLIC include)
 	
 	set_target_properties(noder-interpreter PROPERTIES FOLDER "Libs")
-	install(TARGETS noder-interpreter DESTINATION lib)
+	if (isMultiConfig)
+	install(TARGETS noder-interpreter DESTINATION "$<CONFIG>/lib")
+	else()
+		install(TARGETS noder-interpreter DESTINATION ${CMAKE_BUILD_TYPE}/lib)
+	endif()
 endif()
 #compiler module
 if ("compiler" IN_LIST NODER_MODULES)
@@ -128,7 +137,11 @@ if ("compiler" IN_LIST NODER_MODULES)
 	endif()
 	
 	set_target_properties(noder-compiler PROPERTIES FOLDER "Libs")
-	install(TARGETS noder-compiler DESTINATION lib)
+	if (isMultiConfig)
+	install(TARGETS noder-compiler DESTINATION "$<CONFIG>/lib")
+	else()
+		install(TARGETS noder-compiler DESTINATION ${CMAKE_BUILD_TYPE}/lib)
+	endif()
 endif()
 
 #for later

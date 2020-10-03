@@ -11,55 +11,38 @@ namespace Noder
 	void NodeInterpreter::NodeState::softReset()
 	{
 		resetInternals();
-		for (auto& output : outputs)
+		for (auto& output : cachedOutputs)
 		{
 			if (output)
-				output.get()->reset();
+				output.get() -> reset();
 		}
 	}
 
 	void NodeInterpreter::NodeState::hardReset()
 	{
 		softReset();
-		if (internal)
-			internal.get()->reset();
+		resetState();
 	}
 
-	State& NodeInterpreter::NodeState::Access::getState()
+	std::string NodeInterpreter::correctName(const std::string& name)
 	{
-		return *state->internal;
+		return (name.length() == 0) ? ("__generated" + std::to_string(stateFactories.size())) : name;
 	}
 
-	unsigned NodeInterpreter::NodeState::Access::getTargetFlowPort() const
+	void NodeInterpreter::buildState(Node& node)
 	{
-		return state->targetFlowPort;
-	}
-
-	void NodeInterpreter::NodeState::Access::redirectFlow(unsigned port)
-	{
-		state->targetFlowPort = port;
-	}
-
-	void NodeInterpreter::NodeState::Access::pushScope()
-	{
-		state->pushesScope = true;
-	}
-
-	void NodeInterpreter::NodeState::Access::pushScopedValue(std::unique_ptr<State>&& s)
-	{
-		if (!*scopedValue)
+		auto factory = stateFactories.find(node.getBase()->action);
+		if (factory != stateFactories.end())
 		{
-			*scopedValue = std::move(s);
+			auto it = states.emplace(std::piecewise_construct, std::forward_as_tuple(&node), std::forward_as_tuple(factory->second(node,scopedVariable)));
 		}
 	}
 
-	std::unique_ptr<State> NodeInterpreter::NodeState::Access::popScopedValue()
+	void NodeInterpreter::rebuildState(Node& node)
 	{
-		if (*scopedValue)
-		{
-			return std::move(*scopedValue);
-		}
-		return std::unique_ptr<State>();
+		if (states.count(&node))
+			states.erase(&node);
+		buildState(node);
 	}
 
 	void NodeInterpreter::buildStates()
@@ -67,42 +50,33 @@ namespace Noder
 		states.clear();
 		for (auto& i : env->nodes)
 		{
-			auto it = states.emplace(std::piecewise_construct, std::forward_as_tuple(i.get()), std::tuple<>());
-			for (auto& j : i->getBase()->outputs)
-			{
-				it.first->second.outputs.emplace_back(j.createState());
-			}
+			buildState(*i);
 		}
 	}
 
 	Node& NodeInterpreter::createNode(NodeTemplate& t)
 	{
 		Node& n = env->createNode(t);
-		auto it = states.emplace(std::piecewise_construct, std::forward_as_tuple(&n), std::tuple<>());
-
-		for (auto& i : t.outputs)
-		{
-			it.first->second.outputs.emplace_back(i.createState());
-		}
+		buildState(n);
 		return n;
 	}
 	NodeTemplate& NodeInterpreter::createTemplate()
 	{
 		return env->createTemplate();
 	}
-
-	NodeTemplate& NodeInterpreter::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<void(NodeState::Access, const std::vector<const State*>&, std::vector<std::unique_ptr<State>>&)>& f)
+	
+	NodeTemplate& NodeInterpreter::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory)
 	{
 		NodeTemplate& t = env->createTemplate(name, inP, outP, flowInP, flowOutP);
-
-		setMapping(name, f);
+		addStateFactory(name, factory);
 
 		return t;
 	}
-
-	void NodeInterpreter::setMapping(const std::string& s, const std::function<void(NodeState::Access, const std::vector<const State*>&, std::vector<std::unique_ptr<State>>&)>& f)
+	
+	void NodeInterpreter::addStateFactory(const std::string& name ,const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory)
 	{
-		mapping[s] = f;
+		if (!stateFactories.count(name))
+			stateFactories.emplace(name, factory);
 	}
 
 	NodeInterpreter::NodeState* NodeInterpreter::getNodeState(Node& n)
@@ -112,7 +86,7 @@ namespace Noder
 		{
 			throw std::invalid_argument("Node does not exist in current enviroment.");
 		}
-		return &(it->second);
+		return it->second.get();
 	}
 
 	std::unique_ptr<Enviroment> NodeInterpreter::extractEnviroment()
@@ -143,23 +117,23 @@ namespace Noder
 	{
 		for (auto& i : states)
 		{
-			i.second.hardReset();
+			i.second->hardReset();
 		}
 	}
 
 	void NodeInterpreter::resetState(Node* node)
 	{
-		states.at(node).hardReset();
+		states.at(node)->hardReset();
 	}
 
 	void NodeInterpreter::softResetState(Node* node)
 	{
-		states.at(node).softReset();
+		states.at(node)->softReset();
 	}
 
-	void NodeInterpreter::resetMappings()
+	void NodeInterpreter::resetFactories()
 	{
-		mapping.clear();
+		stateFactories.clear();
 	}
 
 	void NodeInterpreter::runFrom(Node& startPoint)
@@ -171,19 +145,18 @@ namespace Noder
 
 		while (c != nullptr)
 		{
-			NodeState& state = states.at(c);
+			NodeState& state = *states.at(c);
 
 			state.resetInternals();
 
 			calcNode(*c, tmp, toReset);
 
-			if (state.pushesScope)
+			if (state.pushesNewScope())
 				pushScope(c);
 
-			redirected = state.targetFlowPort;
+			redirected = state.getTargetFlowPort();
 
 			Node::PortWrapper portOfNext = c->getFlowOutputPortTarget(redirected);
-
 			//exit if port is not connected
 			if (portOfNext.isVoid())
 			{
@@ -260,7 +233,7 @@ namespace Noder
 				auto it = states.find(p.getNode());
 				if (it != states.end())
 				{
-					State* state = it->second.outputs[p.getPort()].get();
+					State* state = it->second->getCachedOutputs()[p.getPort()].get();
 					if (!state->isReady())
 					{
 						if (p.getNode()->usedFlowInputs() > 0)
@@ -277,18 +250,10 @@ namespace Noder
 				}
 			}
 		}
-		auto it = mapping.find(endPoint.getBase()->action);
-		if (it != mapping.end() && it->second)
+		auto it = states.find(&endPoint);
+		if (it != states.end())
 		{
-			auto it2 = states.find(&endPoint);
-			if (it2 != states.end())
-			{
-				if (!it2->second.internal)
-				{
-					it2->second.internal = std::make_unique<State>(typeid(void), 0);
-				}
-				it->second(NodeState::Access(it2->first, &it2->second,&scopedVariable), inputs, it2->second.outputs);
-			}
+			it->second->calculate(inputs, it->second->getCachedOutputs());
 		}
 		if (endPoint.usedFlowInputs() > 0 && endPoint.getBase()->flowInputPoints == endPoint.usedFlowInputs())
 		{

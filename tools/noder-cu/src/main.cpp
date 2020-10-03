@@ -12,7 +12,6 @@
 
 template<typename T> using P = Noder::Pointer<T>;
 using Port = Noder::Node::PortType;
-using StateAccess = Noder::NodeInterpreter::NodeState::Access;
 
 constexpr uint32_t operator"" _hashed(char const* s, size_t count)
 {

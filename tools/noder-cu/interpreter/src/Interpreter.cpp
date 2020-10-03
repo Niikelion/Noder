@@ -100,7 +100,7 @@ namespace Noder
 		Interpreter::~Interpreter()
 		{
 			getEnviroment()->clear();
-			inter.resetMappings();
+			inter.resetFactories();
 		}
 	}
 }
