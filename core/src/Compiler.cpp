@@ -1,4 +1,4 @@
-#include "noder/NodeCore.hpp"
+#include "Noder/Compiler.hpp"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/Optional.h"
@@ -27,14 +27,52 @@
 #include <memory>
 #include <iostream>
 
+namespace Noder
+{
+	void NodeCompiler::initializeLlvm()
+	{
+		llvm::InitializeNativeTarget();
+		llvm::InitializeNativeTargetAsmPrinter();
+	}
+	std::unique_ptr<Enviroment> NodeCompiler::extractEnviroment()
+	{
+		return std::move(env);
+	}
+	std::unique_ptr<Enviroment> NodeCompiler::swapEnviroment(std::unique_ptr<Enviroment>&& t)
+	{
+		std::unique_ptr<Enviroment> tmp = std::move(env);
+		env = std::move(t);
+		return std::move(tmp);
+	}
+	Enviroment& NodeCompiler::getEnviroment()
+	{
+		return *env;
+	}
+	void NodeCompiler::resetEnviroment()
+	{
+		env.reset();
+	}
+	void NodeCompiler::resetFactories()
+	{
+		//
+	}
+	NodeCompiler::NodeCompiler()
+	{
+		env = std::make_unique<Enviroment>();
+	}
+	NodeCompiler::NodeCompiler(std::unique_ptr<Enviroment>&& t)
+	{
+		env = std::move(t);
+		//setup builders
+	}
+}
+
+/*
 struct impl_b: public NodeCore::impl
 {
 	virtual void run()
 	{
 		using namespace llvm;
-		
-		InitializeNativeTarget();
-		InitializeNativeTargetAsmPrinter();
 		
 		LLVMContext context;
 		IRBuilder<> builder(context);
@@ -81,3 +119,4 @@ NodeCore::NodeCore()
 	pImpl = std::make_unique<impl_b>();
 	pImpl->run();
 }
+*/

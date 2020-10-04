@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Nodes.hpp"
+#include <Noder/Nodes.hpp>
 #include <unordered_set>
 #include <functional>
 #include <algorithm>

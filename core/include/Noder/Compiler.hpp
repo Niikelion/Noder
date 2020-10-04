@@ -1,14 +1,25 @@
 #pragma once
 
-#include "Interpreter.hpp"
+#include <Noder/Nodes.hpp>
 
-class DLLACTION NodeCore
+namespace Noder
 {
-public:
-    struct impl {
-        virtual void run() = 0;
+    class DLLACTION NodeCompiler
+    {
+    public:
+		static void initializeLlvm();
+
+		std::unique_ptr<Enviroment> extractEnviroment();
+		std::unique_ptr<Enviroment> swapEnviroment(std::unique_ptr<Enviroment>&&);
+		Enviroment& getEnviroment();
+
+		void resetEnviroment();
+
+		void resetFactories();
+
+		NodeCompiler();
+		NodeCompiler(std::unique_ptr<Enviroment>&&);
+    private:
+        std::unique_ptr<Enviroment> env;
     };
-    std::unique_ptr<impl> pImpl;
-public:
-    NodeCore();
-};
+}
