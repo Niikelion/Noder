@@ -24,6 +24,22 @@ namespace Noder
 		resetState();
 	}
 
+	void NodeInterpreter::NodeState::setUpInternals(std::unique_ptr<State>& scopeVariable)
+	{
+		scopedVariable = &scopeVariable;
+	}
+
+	void NodeInterpreter::NodeState::attachNode(const Node& node)
+	{
+		auto& outputs = node.getBase()->outputs;
+		cachedOutputs.clear();
+		cachedOutputs.reserve(outputs.size());
+		for (const auto& port : outputs)
+		{
+			cachedOutputs.emplace_back(port.createState());
+		}
+	}
+
 	std::string NodeInterpreter::correctName(const std::string& name)
 	{
 		return (name.length() == 0) ? ("__generated" + std::to_string(stateFactories.size())) : name;

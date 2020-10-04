@@ -493,7 +493,7 @@ namespace Noder
 		unsigned usedInputs;
 	public:
 		using PortType = PortTypeWrapper::Type;
-		State* getConfig();
+		State* getConfig() const;
 
 		template<typename T> void setInputValue(unsigned id, const T& value)
 		{

@@ -26,7 +26,7 @@ public:
 		x = &v;
 	}
 
-	ExternalFloatSetter(const Noder::Node& node, std::unique_ptr<Noder::State>& scoped) : ObjectNodeState(node, scoped), x(nullptr) {}
+	ExternalFloatSetter() : x(nullptr) {}
 };
 
 std::tuple<float, float> swapFloat(float a, float b)
@@ -37,27 +37,40 @@ std::tuple<float, float> swapFloat(float a, float b)
 class ConfigStringReader : public Noder::NodeInterpreter::ObjectNodeState<std::tuple<std::string, float>()>
 {
 private:
-	const Noder::Node& node;
+	Noder::State* config;
 public:
 	virtual std::tuple<std::string, float> calculate() override
 	{
-		std::string value = const_cast<Noder::Node&>(node).getConfig()->getValue<std::string>();
+		std::string value = config->getValue<std::string>();
 		return { value, (float)value.size() };
 	}
-	ConfigStringReader(const Noder::Node& n, std::unique_ptr<Noder::State>& scoped) : ObjectNodeState(n, scoped), node(n) {}
+
+	virtual void attachNode(const Noder::Node& node) override
+	{
+		ObjectNodeState::attachNode(node);
+		config = node.getConfig();
+	}
+
+	ConfigStringReader() : config(nullptr) {}
 };
 
 class StringPrinter : public Noder::NodeInterpreter::ObjectNodeState<void(std::string)>
 {
 private:
-	const Noder::Node& node;
+	Noder::State* config;
 public:
 	virtual void calculate(std::string s) override
 	{
-		const_cast<Noder::Node&>(node).getConfig()->getValue<std::stringstream>() << s;
+		config->getValue<std::stringstream>() << s;
 	}
 
-	StringPrinter(const Noder::Node& n, std::unique_ptr<Noder::State>& scoped) : ObjectNodeState(n, scoped), node(n) {}
+	virtual void attachNode(const Noder::Node& node)
+	{
+		ObjectNodeState::attachNode(node);
+		config = node.getConfig();
+	}
+
+	StringPrinter() : config(nullptr) {}
 };
 
 struct NotSerializableType

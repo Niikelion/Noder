@@ -54,10 +54,10 @@ namespace Noder
 			}
 			template<typename T> void pushScopedValue(const T& value)
 			{
-				if (!scopedVariable)
+				if (!(*scopedVariable))
 				{
-					scopedVariable = std::make_unique<State>(_noder_hacks_::tag<T>{});
-					scopedVariable->emplaceValue<T>(value);
+					*scopedVariable = std::make_unique<State>(_noder_hacks_::tag<T>{});
+					(*scopedVariable)->emplaceValue<T>(value);
 				}
 			}
 
@@ -65,8 +65,8 @@ namespace Noder
 			{
 				if (scopedVariable && scopedVariable->checkType<T>())
 				{
-					T ret = scopedVariable->getValue<T>();
-					scopedVariable.reset();
+					T ret = (*scopedVariable)->getValue<T>();
+					scopedVariable->reset();
 					return std::move(ret);
 				}
 			}
@@ -76,18 +76,15 @@ namespace Noder
 			void softReset();
 			void hardReset();
 
+			void setUpInternals(std::unique_ptr<State>& scopeVariable);
+
+			virtual void attachNode(const Node& node);
+
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) = 0;
 			virtual void resetState() {};
 
-			NodeState(const Node& node, std::unique_ptr<State>& scopeVariable) : targetFlowPort(0), pushesScope(false), scopedVariable(scopeVariable)
-			{
-				auto& outputs = node.getBase()->outputs;
-				cachedOutputs.reserve(outputs.size());
-				for (const auto& port : outputs)
-				{
-					cachedOutputs.emplace_back(port.createState());
-				}
-			}
+			NodeState() : targetFlowPort(0), pushesScope(false), scopedVariable(nullptr) {}
+
 			NodeState(NodeState&&) = default;
 		protected:
 			inline void redirectFlow(unsigned port)
@@ -102,7 +99,7 @@ namespace Noder
 			unsigned targetFlowPort;
 			bool pushesScope;
 			std::vector<std::unique_ptr<State>> cachedOutputs;
-			std::unique_ptr<State>& scopedVariable;
+			std::unique_ptr<State>* scopedVariable;
 		};
 
 		template<typename T> class FunctionNodeState : public NodeState {};
@@ -117,7 +114,7 @@ namespace Noder
 				unpackTuple<sizeof...(Rets)>(outputs, t);
 			}
 
-			FunctionNodeState(const Node& node, std::unique_ptr<State>& scopeVariable, const std::function<std::tuple<Rets...>(Args...)>& f) : NodeState(node, scopeVariable), function(f) {}
+			FunctionNodeState(const std::function<std::tuple<Rets...>(Args...)>& f) : function(f) {}
 			FunctionNodeState(FunctionNodeState&&) noexcept = default;
 		};
 		template<typename... Args> class FunctionNodeState<void(Args...)> : public NodeState
@@ -130,7 +127,7 @@ namespace Noder
 				UnpackCaller<void(Args...)>::call(function, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>());
 			}
 
-			FunctionNodeState(const Node& node, std::unique_ptr<State>& scopeVariable, const std::function<void(Args...)>& f) : NodeState(node, scopeVariable), function(f) {}
+			FunctionNodeState(const std::function<void(Args...)>& f) : function(f) {}
 			FunctionNodeState(FunctionNodeState&&) noexcept = default;
 		};
 		template<typename Ret, typename... Args> class FunctionNodeState<Ret(Args...)> : public NodeState
@@ -143,7 +140,7 @@ namespace Noder
 				outputs.back()->setValue<Ret>(UnpackCaller<Ret(Args...)>::call(function, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
 			}
 
-			FunctionNodeState(const Node& node, std::unique_ptr<State>& scopeVariable, const std::function<Ret(Args...)>& f) : NodeState(node, scopeVariable), function(f) {}
+			FunctionNodeState(const std::function<Ret(Args...)>& f) : function(f) {}
 			FunctionNodeState(FunctionNodeState&&) noexcept = default;
 		};
 	
@@ -354,7 +351,10 @@ namespace Noder
 
 		template<typename T> static std::unique_ptr<NodeState> genericStateCreatorFunction(const Node& node, std::unique_ptr<State>& i)
 		{
-			return std::make_unique<T>(node,i);
+			auto ret = std::make_unique<T>();
+			ret->setUpInternals(i);
+			ret->attachNode(node);
+			return ret;
 		}
 	public:
 		void buildState(Node& node);
@@ -390,7 +390,10 @@ namespace Noder
 
 			addStateFactory(action, [f](const Node& node, std::unique_ptr<State>& i)
 				{
-					return std::make_unique<FunctionNodeState<std::tuple<Rets...>(Args...)>>(node, i, f);
+					auto ret = std::make_unique<FunctionNodeState<std::tuple<Rets...>(Args...)>>(f);
+					ret->setUpInternals(i);
+					ret->attachNode(node);
+					return ret;
 				});
 
 			return t;
@@ -411,7 +414,10 @@ namespace Noder
 
 			addStateFactory(action, [f](const Node& node, std::unique_ptr<State>& i)
 				{
-					return std::make_unique<FunctionNodeState<void(Args...)>>(node, i, f);
+					auto ret = std::make_unique<FunctionNodeState<void(Args...)>>(f);
+					ret->setUpInternals(i);
+					ret->attachNode(node);
+					return ret;
 				});
 
 			return t;
@@ -433,7 +439,10 @@ namespace Noder
 
 			addStateFactory(action, [f](const Node& node, std::unique_ptr<State>& i)
 				{
-					return std::make_unique<FunctionNodeState<T(Args...)>>(node, i, f);
+					auto ret = std::make_unique<FunctionNodeState<T(Args...)>>(f);
+					ret->setUpInternals(i);
+					ret->attachNode(node);
+					return ret;
 				});
 
 			return t;

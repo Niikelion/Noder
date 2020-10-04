@@ -188,7 +188,7 @@ namespace Noder
 		return base;
 	}
 
-	State* Node::getConfig()
+	State* Node::getConfig() const
 	{
 		return config.get();
 	}
