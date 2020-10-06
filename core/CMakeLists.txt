@@ -46,7 +46,9 @@ find_package(parselib REQUIRED)
 if ("compiler" IN_LIST NODER_MODULES)
 	set(LLVM_CONFIG   "" CACHE FILEPATH "Path to llvm-config")
 	set(LLVM_CONFIG_D "" CACHE FILEPATH "Path to llvm-config(debug)")
-	set(BUILD_TESTS false CACHE BOOL "Build core tests")
+	
+#	set(LLVM_MODULES "codegen interpreter executionengine linker mcjit mcparser native tablegen")
+	set(LLVM_MODULES "all")
 
 	if (LLVM_CONFIG STREQUAL "")
 		message(FATAL_ERROR "You must specify llvm-config path")
@@ -66,7 +68,7 @@ if ("compiler" IN_LIST NODER_MODULES)
 	separate_arguments(sys_libs)
 
 	execute_process(COMMAND ${LLVM_CONFIG}
-		--link-static --libfiles codegen interpreter executionengine linker mcjit mcparser native tablegen
+		--link-static --libfiles ${LLVM_MODULES}
 		OUTPUT_VARIABLE llvm_libs OUTPUT_STRIP_TRAILING_WHITESPACE)
 	separate_arguments(llvm_libs)
 
@@ -80,7 +82,7 @@ if ("compiler" IN_LIST NODER_MODULES)
 			message(FATAL_ERROR "You must specify llvm-config path for debug configuration")
 		endif()
 		execute_process(COMMAND ${LLVM_CONFIG_D}
-			--link-static --libfiles codegen interpreter executionengine linker mcjit mcparser native tablegen
+			--link-static --libfiles ${LLVM_MODULES}
 			OUTPUT_VARIABLE llvm_libs_d OUTPUT_STRIP_TRAILING_WHITESPACE)
 		separate_arguments(llvm_libs_d)
 
@@ -128,8 +130,7 @@ if ("compiler" IN_LIST NODER_MODULES)
 	add_library(noder-compiler STATIC ${COMPILER_SOURCES} ${COMPILER_HEADERS})
 	set_target_properties(noder-compiler PROPERTIES POSITION_INDEPENDENT_CODE ON)
 	target_link_libraries(noder-compiler PUBLIC noder-core ${sys_libs})
-	target_include_directories(noder-compiler PUBLIC include)
-	target_include_directories(noder-compiler PRIVATE ${LLVM_INCLUDE} ${llvm_include_dir} ${llvm_root}/include)
+	target_include_directories(noder-compiler PUBLIC include ${llvm_include_dir} ${llvm_root}/include)
 
 	if (isMultiConfig)
 		target_link_libraries(noder-compiler PUBLIC "$<$<CONFIG:Debug>:${llvm_libs_d}>$<$<NOT:$<CONFIG:Debug>>:${llvm_libs}>")
@@ -141,7 +142,7 @@ if ("compiler" IN_LIST NODER_MODULES)
 	
 	set_target_properties(noder-compiler PROPERTIES FOLDER "Libs")
 	if (isMultiConfig)
-	install(TARGETS noder-compiler DESTINATION "$<CONFIG>/lib")
+		install(TARGETS noder-compiler DESTINATION "$<CONFIG>/lib")
 	else()
 		install(TARGETS noder-compiler DESTINATION ${CMAKE_BUILD_TYPE}/lib)
 	endif()
