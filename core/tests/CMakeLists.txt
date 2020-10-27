@@ -30,7 +30,7 @@ endif()
 APPEND_EXT(TESTS TESTS "cpp")
 
 add_executable(core-tests ${TEST_SOURCES} ${TESTS})
-set_property(TARGET core-tests PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:core-tests>")
+set_target_properties(core-tests PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:core-tests>")
 target_link_libraries(core-tests PRIVATE Catch2::Catch2 noder-interpreter noder-compiler)
 
 add_custom_command(TARGET core-tests POST_BUILD
@@ -38,3 +38,7 @@ add_custom_command(TARGET core-tests POST_BUILD
 )
 
 set_target_properties(core-tests PROPERTIES FOLDER "Tests")
+
+add_executable(compiler-test compiler-main.cpp)
+set_target_properties(compiler-test PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:compiler-test>" FOLDER "Tests")
+target_link_libraries(compiler-test PRIVATE noder-compiler)

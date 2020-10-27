@@ -85,7 +85,6 @@ if ("compiler" IN_LIST NODER_MODULES)
 			--link-static --libfiles ${LLVM_MODULES}
 			OUTPUT_VARIABLE llvm_libs_d OUTPUT_STRIP_TRAILING_WHITESPACE)
 		separate_arguments(llvm_libs_d)
-
 		execute_process(COMMAND ${LLVM_CONFIG_D}
 			--cppflags
 			OUTPUT_VARIABLE llvm_flags_d OUTPUT_STRIP_TRAILING_WHITESPACE)

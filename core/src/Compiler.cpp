@@ -74,37 +74,23 @@ namespace Noder
 {
 	std::unique_ptr<NodeCompiler::Program> NodeCompiler::generate()
 	{
-		using namespace llvm;
-		
-		//llvm::CodeGenFileType::CGFT_ObjectFile
+		Builder builder(context);
+		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>("test",context));
+		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
-		IRBuilder<> builder(context);
+		Builder::Function function("printer", Builder::Type::get<void()>(context), *program);
+		Builder::InstructionBlock entryPoint(function,"entry");
 
-		std::unique_ptr<Module> module = std::make_unique<Module>("test", context);
-		module->setTargetTriple(llvm::sys::getDefaultTargetTriple());
+		builder.setInsertPoint(entryPoint);
 
-		FunctionType* ft = FunctionType::get(Type::getVoidTy(context), {}, false);
+		Builder::Value str = builder.createCString("Hello world!\n");
 
-		Function* f = Function::Create(ft, Function::ExternalLinkage, "printer", module.get());
-		BasicBlock* bb = BasicBlock::Create(context, "entry", f);
+		Builder::ExternalFunction putsFunc("puts", Builder::Type::get<int32_t(int8_t*)>(context), *program);
+		builder.addFunctionCall(putsFunc, {str});
 
-		builder.SetInsertPoint(bb);
+		builder.addVoidReturn();
 
-		Value* str = builder.CreateGlobalStringPtr("Hello world!\n");
-
-		std::vector<Type*> putsArgs;
-		putsArgs.push_back(builder.getInt8Ty()->getPointerTo());
-
-		ArrayRef<llvm::Type*>  argsRef(putsArgs);
-
-		FunctionType* putsType =
-			FunctionType::get(builder.getInt32Ty(), argsRef, false);
-		llvm::FunctionCallee putsFunc = module->getOrInsertFunction("puts", putsType);
-
-		builder.CreateCall(putsFunc, str);
-		builder.CreateRetVoid();
-
-		return std::make_unique<Program>(std::move(module));
+		return program;
 	}
 	void NodeCompiler::initializeLlvm()
 	{
@@ -229,5 +215,32 @@ namespace Noder
 			out.flush();
 			//
 		}
+	}
+	NodeCompiler::Builder::Value NodeCompiler::Builder::createCString(const std::string& value)
+	{
+		return Value(builder.CreateGlobalStringPtr(value));
+	}
+	void NodeCompiler::Builder::addFunctionCall(const Callee& function, const std::vector<Value>& arguments)
+	{
+		std::vector<llvm::Value*> args;
+
+		args.reserve(arguments.size());
+
+		for (const auto& arg : arguments)
+			args.push_back(arg.value);
+
+		builder.CreateCall(function.getHandle(), args, function.getName());
+	}
+	void NodeCompiler::Builder::addReturn(const Value& value)
+	{
+		builder.CreateRet(value.value);
+	}
+	void NodeCompiler::Builder::addVoidReturn()
+	{
+		builder.CreateRetVoid();
+	}
+	void NodeCompiler::Builder::setInsertPoint(InstructionBlock& block)
+	{
+		builder.SetInsertPoint(block.getBlock());
 	}
 }
