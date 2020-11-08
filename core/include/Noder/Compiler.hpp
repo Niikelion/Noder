@@ -72,7 +72,7 @@ namespace Noder
 			std::shared_ptr<ExecutionEngine> engine;
 		};
 
-		class Builder
+		class LlvmBuilder
 		{
 		public:
 			class Type
@@ -233,7 +233,7 @@ namespace Noder
 
 			void setInsertPoint(InstructionBlock& block);
 
-			Builder(llvm::LLVMContext& context) : builder(context) {}
+			LlvmBuilder(llvm::LLVMContext& context) : builder(context) {}
 
 			inline llvm::IRBuilder<>& getBuilder()
 			{
@@ -246,7 +246,11 @@ namespace Noder
 		class BuilderModule
 		{
 		public:
-			virtual void 
+			virtual void updateConfig() {};
+
+			BuilderModule(Node& n): node(&n) {}
+		private:
+			Node* node;
 		};
 
 		std::unique_ptr<Program> generate();

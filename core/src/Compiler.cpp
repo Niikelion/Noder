@@ -65,7 +65,7 @@
 #include "llvm/Support/WithColor.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
-//#include ""
+
 
 #include <memory>
 #include <iostream>
@@ -74,18 +74,18 @@ namespace Noder
 {
 	std::unique_ptr<NodeCompiler::Program> NodeCompiler::generate()
 	{
-		Builder builder(context);
+		LlvmBuilder builder(context);
 		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>("test",context));
 		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
-		Builder::Function function("printer", Builder::Type::get<void()>(context), *program);
-		Builder::InstructionBlock entryPoint(function,"entry");
+		LlvmBuilder::Function function("printer", LlvmBuilder::Type::get<void()>(context), *program);
+		LlvmBuilder::InstructionBlock entryPoint(function,"entry");
 
 		builder.setInsertPoint(entryPoint);
 
-		Builder::Value str = builder.createCString("Hello world!\n");
+		LlvmBuilder::Value str = builder.createCString("Hello world!\n");
 
-		Builder::ExternalFunction putsFunc("puts", Builder::Type::get<int32_t(int8_t*)>(context), *program);
+		LlvmBuilder::ExternalFunction putsFunc("puts", LlvmBuilder::Type::get<int32_t(int8_t*)>(context), *program);
 		builder.addFunctionCall(putsFunc, {str});
 
 		builder.addVoidReturn();
@@ -216,11 +216,11 @@ namespace Noder
 			//
 		}
 	}
-	NodeCompiler::Builder::Value NodeCompiler::Builder::createCString(const std::string& value)
+	NodeCompiler::LlvmBuilder::Value NodeCompiler::LlvmBuilder::createCString(const std::string& value)
 	{
 		return Value(builder.CreateGlobalStringPtr(value));
 	}
-	void NodeCompiler::Builder::addFunctionCall(const Callee& function, const std::vector<Value>& arguments)
+	void NodeCompiler::LlvmBuilder::addFunctionCall(const Callee& function, const std::vector<Value>& arguments)
 	{
 		std::vector<llvm::Value*> args;
 
@@ -231,15 +231,15 @@ namespace Noder
 
 		builder.CreateCall(function.getHandle(), args, function.getName());
 	}
-	void NodeCompiler::Builder::addReturn(const Value& value)
+	void NodeCompiler::LlvmBuilder::addReturn(const Value& value)
 	{
 		builder.CreateRet(value.value);
 	}
-	void NodeCompiler::Builder::addVoidReturn()
+	void NodeCompiler::LlvmBuilder::addVoidReturn()
 	{
 		builder.CreateRetVoid();
 	}
-	void NodeCompiler::Builder::setInsertPoint(InstructionBlock& block)
+	void NodeCompiler::LlvmBuilder::setInsertPoint(InstructionBlock& block)
 	{
 		builder.SetInsertPoint(block.getBlock());
 	}
