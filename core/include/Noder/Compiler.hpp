@@ -7,9 +7,8 @@
 
 namespace Noder
 {
-    class DLLACTION NodeCompiler
-    {
-    public:
+	namespace CompilerTools
+	{
 		class ExecutionEngine
 		{
 		private:
@@ -120,7 +119,7 @@ namespace Noder
 						return llvm::Type::getVoidTy(context);
 					}
 				};
-				template<typename T> struct TypeTranslator<T,std::enable_if_t<std::is_floating_point<T>::value || std::is_integral<T>::value>>
+				template<typename T> struct TypeTranslator<T, std::enable_if_t<std::is_floating_point<T>::value || std::is_integral<T>::value>>
 				{
 					llvm::Type* get(llvm::LLVMContext& context)
 					{
@@ -140,7 +139,7 @@ namespace Noder
 			class Callee
 			{
 			public:
-				
+
 				virtual llvm::FunctionCallee getHandle() const = 0;
 
 				inline llvm::Function::LinkageTypes getLinkageType()
@@ -175,7 +174,7 @@ namespace Noder
 					return callee;
 				}
 
-				ExternalFunction(const std::string& name, Type signature, Program& program) : Callee(name,llvm::Function::LinkageTypes::ExternalLinkage)
+				ExternalFunction(const std::string& name, Type signature, Program& program) : Callee(name, llvm::Function::LinkageTypes::ExternalLinkage)
 				{
 					callee = program.getModule().getOrInsertFunction(name, (llvm::FunctionType*)signature.type);
 				}
@@ -191,7 +190,7 @@ namespace Noder
 				}
 
 
-				Function(const std::string& name, Type signature, Program& program,llvm::Function::LinkageTypes linkage = llvm::Function::LinkageTypes::ExternalLinkage) : Callee(name, linkage), function(nullptr)
+				Function(const std::string& name, Type signature, Program& program, llvm::Function::LinkageTypes linkage = llvm::Function::LinkageTypes::ExternalLinkage) : Callee(name, linkage), function(nullptr)
 				{
 					function = llvm::Function::Create((llvm::FunctionType*)(signature.type), getLinkageType(), getName(), program.getModule());
 				}
@@ -212,7 +211,7 @@ namespace Noder
 					return block;
 				}
 
-				InstructionBlock(Function& function,const std::string& name = "") : block(nullptr)
+				InstructionBlock(Function& function, const std::string& name = "") : block(nullptr)
 				{
 					block = llvm::BasicBlock::Create(function.getFunction()->getContext(), name, function.getFunction());
 				}
@@ -227,7 +226,7 @@ namespace Noder
 			Value createCString(const std::string& value);
 
 			void addFunctionCall(const Callee& function, const std::vector<Value>& arguments);
-			
+
 			void addReturn(const Value& value);
 			void addVoidReturn();
 
@@ -243,17 +242,49 @@ namespace Noder
 			llvm::IRBuilder<> builder;
 		};
 
+
 		class BuilderModule
 		{
 		public:
-			virtual void updateConfig() {};
+			//virtual void updateConfig() {};
 
-			BuilderModule(Node& n): node(&n) {}
+			BuilderModule(Node& n) : node(&n) {}
 		private:
 			Node* node;
 		};
 
-		std::unique_ptr<Program> generate();
+		class Value
+		{
+			//
+		};
+
+		class Node
+		{
+		public:
+			std::function<void(Node&, LlvmBuilder& builder,std::vector<Value> inputs,std::vector<Value>& outputs)> generator;
+			inline void generate(LlvmBuilder& builder, std::vector<Value> inputs, std::vector<Value>& outputs)
+			{
+				if (generator)
+					generator(*this, builder, inputs, outputs);
+			}
+
+			std::vector<Node*> flowOutputs;
+			std::map<unsigned, std::pair<std::shared_ptr<Node>, unsigned>> inputToChildOutputMapping;
+		};
+
+		class StructureBuilder
+		{
+		public:
+			std::vector<std::shared_ptr<Node>> flowNodes;
+
+			std::unique_ptr<Program> generate(llvm::LLVMContext& context);
+		};
+	}
+
+    class DLLACTION NodeCompiler
+    {
+    public:
+		std::unique_ptr<CompilerTools::Program> generate();
 
 		static void initializeLlvm();
 

@@ -69,11 +69,13 @@
 
 #include <memory>
 #include <iostream>
+#include <unordered_set>
 
 namespace Noder
 {
-	std::unique_ptr<NodeCompiler::Program> NodeCompiler::generate()
+	std::unique_ptr<CompilerTools::Program> NodeCompiler::generate()
 	{
+		using namespace CompilerTools;
 		LlvmBuilder builder(context);
 		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>("test",context));
 		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
@@ -135,11 +137,11 @@ namespace Noder
 		//TODO: setup builders
 	}
 
-	void* NodeCompiler::ExecutionEngine::getSymbol(const std::string& name)
+	void* CompilerTools::ExecutionEngine::getSymbol(const std::string& name)
 	{
 		return engine->getPointerToNamedFunction(name);
 	}
-	NodeCompiler::ExecutionEngine::ExecutionEngine(const llvm::Module& m)
+	CompilerTools::ExecutionEngine::ExecutionEngine(const llvm::Module& m)
 	{
 		std::string errStr;
 		std::unique_ptr<llvm::Module> module = llvm::CloneModule(m);
@@ -155,7 +157,7 @@ namespace Noder
 			engine->finalizeObject();
 		}
 	}
-	void NodeCompiler::Program::compile(const std::string& filename)
+	void CompilerTools::Program::compile(const std::string& filename)
 	{
 		std::error_code errCode;
 
@@ -216,11 +218,11 @@ namespace Noder
 			//
 		}
 	}
-	NodeCompiler::LlvmBuilder::Value NodeCompiler::LlvmBuilder::createCString(const std::string& value)
+	CompilerTools::LlvmBuilder::Value CompilerTools::LlvmBuilder::createCString(const std::string& value)
 	{
 		return Value(builder.CreateGlobalStringPtr(value));
 	}
-	void NodeCompiler::LlvmBuilder::addFunctionCall(const Callee& function, const std::vector<Value>& arguments)
+	void CompilerTools::LlvmBuilder::addFunctionCall(const Callee& function, const std::vector<Value>& arguments)
 	{
 		std::vector<llvm::Value*> args;
 
@@ -231,16 +233,89 @@ namespace Noder
 
 		builder.CreateCall(function.getHandle(), args, function.getName());
 	}
-	void NodeCompiler::LlvmBuilder::addReturn(const Value& value)
+	void CompilerTools::LlvmBuilder::addReturn(const Value& value)
 	{
 		builder.CreateRet(value.value);
 	}
-	void NodeCompiler::LlvmBuilder::addVoidReturn()
+	void CompilerTools::LlvmBuilder::addVoidReturn()
 	{
 		builder.CreateRetVoid();
 	}
-	void NodeCompiler::LlvmBuilder::setInsertPoint(InstructionBlock& block)
+	void CompilerTools::LlvmBuilder::setInsertPoint(InstructionBlock& block)
 	{
 		builder.SetInsertPoint(block.getBlock());
+	}
+
+	std::unique_ptr<CompilerTools::Program> Noder::CompilerTools::StructureBuilder::generate(llvm::LLVMContext& context)
+	{
+		using namespace CompilerTools;
+		LlvmBuilder builder(context);
+		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>("test", context));
+		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
+
+		std::unordered_set<Node*> calculatedNodes;
+		std::unordered_set<Node*> visitedNodes;
+		std::unordered_map<Node*, std::vector<Value>> nodeOutputs;
+
+		for (auto& flowNode : flowNodes)
+		{
+			std::vector<Node*> nodesToCalculate;
+			nodesToCalculate.push_back(flowNode.get());
+			visitedNodes.insert(flowNode.get());
+
+			while (!nodesToCalculate.empty())
+			{
+				Node* n = nodesToCalculate.back();
+				bool depsAlreadyResolved = true;
+
+				std::unordered_set<Node*> neededNodes;
+
+				for (auto& dep : n->inputToChildOutputMapping)
+				{
+					neededNodes.insert(dep.second.first.get());
+				}
+
+				for (auto& dep : neededNodes)
+				{
+					if (!calculatedNodes.count(dep))
+					{
+						if (visitedNodes.count(dep) > 0)
+							throw std::logic_error("Cyclic dependency detected");
+						depsAlreadyResolved = false;
+						nodesToCalculate.push_back(dep);
+						visitedNodes.insert(dep);
+					}
+				}
+				if (depsAlreadyResolved)
+				{
+					nodesToCalculate.pop_back();
+					std::vector<Value> inputs,outputs;
+					inputs.resize(n->inputToChildOutputMapping.size());
+					for (auto& mapping : n->inputToChildOutputMapping)
+					{
+						if (mapping.first >= inputs.size())
+							throw std::logic_error("There are missing input values");
+						inputs[mapping.first] = nodeOutputs.at(mapping.second.first.get())[mapping.second.second];
+						n->generate(builder, inputs, outputs);
+						nodeOutputs.emplace(n,outputs);
+					}
+					calculatedNodes.insert(n);
+				}
+			}
+		}
+
+		LlvmBuilder::Function function("printer", LlvmBuilder::Type::get<void()>(context), *program);
+		LlvmBuilder::InstructionBlock entryPoint(function, "entry");
+
+		builder.setInsertPoint(entryPoint);
+
+		LlvmBuilder::Value str = builder.createCString("Hello world!\n");
+
+		LlvmBuilder::ExternalFunction putsFunc("puts", LlvmBuilder::Type::get<int32_t(int8_t*)>(context), *program);
+		builder.addFunctionCall(putsFunc, { str });
+
+		builder.addVoidReturn();
+
+		return program;
 	}
 }
