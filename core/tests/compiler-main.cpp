@@ -6,8 +6,8 @@ int main()
 
 	NodeCompiler::initializeLlvm();
 	NodeCompiler compiler;
-	std::unique_ptr<NodeCompiler::Program> program = compiler.generate();
-	std::shared_ptr<NodeCompiler::ExecutionEngine> engine = program->getExecutableInstance();
+	std::unique_ptr<CompilerTools::Program> program = compiler.generateFunctions();
+	std::shared_ptr<CompilerTools::ExecutionEngine> engine = program->getExecutableInstance();
 	engine->getSymbol<void()>("printer")();
 	program->compile("printer.obj");
 

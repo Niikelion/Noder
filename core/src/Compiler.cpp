@@ -66,6 +66,8 @@
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 
+#include "llvm/Transforms/Utils.h"
+#include "llvm/Transforms/Scalar.h"
 
 #include <memory>
 #include <iostream>
@@ -73,11 +75,14 @@
 
 namespace Noder
 {
-	std::unique_ptr<CompilerTools::Program> NodeCompiler::generate()
+	std::unique_ptr<CompilerTools::Program> NodeCompiler::generateFunctions()
 	{
 		using namespace CompilerTools;
+
+		//llvm::IRBuilder<> builder(context);
+
 		LlvmBuilder builder(context);
-		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>("test",context));
+		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>("definitions",context));
 		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
 		LlvmBuilder::Function function("printer", LlvmBuilder::Type::get<void()>(context), *program);
@@ -86,11 +91,26 @@ namespace Noder
 		builder.setInsertPoint(entryPoint);
 
 		LlvmBuilder::Value str = builder.createCString("Hello world!\n");
-
+		
 		LlvmBuilder::ExternalFunction putsFunc("puts", LlvmBuilder::Type::get<int32_t(int8_t*)>(context), *program);
 		builder.addFunctionCall(putsFunc, {str});
 
 		builder.addVoidReturn();
+
+		return program;
+	}
+	std::unique_ptr<CompilerTools::Program> NodeCompiler::generateAll(Noder::Node& mainEntry)
+	{
+		using namespace CompilerTools;
+
+		LlvmBuilder builder(context);
+		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>("main", context));
+		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
+
+		LlvmBuilder::Function function("main", LlvmBuilder::Type::get<int()>(context), *program);
+		LlvmBuilder::InstructionBlock entryPoint(function, "entry");
+
+		//
 
 		return program;
 	}
@@ -125,7 +145,7 @@ namespace Noder
 	}
 	void NodeCompiler::resetFactories()
 	{
-		//TODO:
+		creators.clear();
 	}
 	NodeCompiler::NodeCompiler()
 	{
@@ -135,6 +155,20 @@ namespace Noder
 	{
 		env = std::move(t);
 		//TODO: setup builders
+	}
+
+	std::vector<CompilerTools::LlvmBuilder::InstructionBlock> NodeCompiler::generateNode(Node& node, std::vector<CompilerTools::LlvmBuilder::InstructionBlock> entries, std::vector<CompilerTools::LlvmBuilder::Variable>& outputs, CompilerTools::LlvmBuilder& builder)
+	{
+		std::vector<CompilerTools::LlvmBuilder::InstructionBlock> ret;
+		auto it = creators.find(node.getBase()->action);
+		if (it == creators.end())
+		{
+			//action missing
+		}
+
+		//it->second->generate()
+
+		return ret;
 	}
 
 	void* CompilerTools::ExecutionEngine::getSymbol(const std::string& name)
@@ -168,6 +202,7 @@ namespace Noder
 			//error
 			return;
 		}
+
 		llvm::legacy::PassManager passManager;
 
 		std::string error;
@@ -200,6 +235,10 @@ namespace Noder
 			//error
 			return;
 		}
+		
+		//passManager.add(llvm::createPromoteMemoryToRegisterPass());
+		//passManager.add(llvm::createCFGSimplificationPass());
+
 		if (target->addPassesToEmitFile(
 			passManager,
 			out,

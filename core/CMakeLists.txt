@@ -1,6 +1,16 @@
-#sources
+#config variables
 
 set(ALL_MODULES "interpreter;compiler")
+
+get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+
+option(NODER_MODULES "selected modules or 'all'" "all")
+
+if (NODER_MODULES STREQUAL "all")
+	set(NODER_MODULES ${ALL_MODULES})
+endif()
+
+#sources
 
 set(CORE_SOURCES
 	src/Nodes.cpp
@@ -27,25 +37,11 @@ set(COMPILER_HEADERS
 	include/Noder/Compiler.hpp
 )
 
-#config variables
-
-if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.9)
-	get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
-elseif(CMAKE_CONFIGURATION_TYPES)
-	set(isMultiConfig TRUE)
-endif()
-
-set(NODER_MODULES "all" CACHE STRING "selected modules or 'all'")
-
-if (NODER_MODULES STREQUAL "all")
-	set(NODER_MODULES ${ALL_MODULES})
-endif()
-
 find_package(parselib REQUIRED)
 
 if ("compiler" IN_LIST NODER_MODULES)
-	set(LLVM_CONFIG   "" CACHE FILEPATH "Path to llvm-config")
-	set(LLVM_CONFIG_D "" CACHE FILEPATH "Path to llvm-config(debug)")
+	option(LLVM_CONFIG "Path to llvm-config" "")
+	option(LLVM_CONFIG_D "" CACHE FILEPATH "Path to llvm-config(debug)")
 	
 #	set(LLVM_MODULES "codegen interpreter executionengine linker mcjit mcparser native tablegen")
 	set(LLVM_MODULES "all")

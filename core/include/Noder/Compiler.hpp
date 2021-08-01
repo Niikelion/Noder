@@ -206,7 +206,7 @@ namespace Noder
 			class InstructionBlock
 			{
 			public:
-				inline llvm::BasicBlock* getBlock()
+				inline llvm::BasicBlock* getBlock() const
 				{
 					return block;
 				}
@@ -219,8 +219,26 @@ namespace Noder
 				{
 					block = llvm::BasicBlock::Create(function.getFunction()->getContext(), name, function.getFunction(), insertAnchor.block);
 				}
+				InstructionBlock(const InstructionBlock& b): block(b.block) {}
 			private:
 				llvm::BasicBlock* block;
+			};
+
+			class Variable
+			{
+			public:
+				llvm::AllocaInst* getAlloca()
+				{
+					return alloca;
+				}
+
+				Variable(const InstructionBlock& block, const LlvmBuilder::Type& type): alloca(nullptr)
+				{
+					llvm::IRBuilder<> b(block.getBlock());
+					alloca = b.CreateAlloca(type.type);
+				}
+			private:
+				llvm::AllocaInst* alloca;
 			};
 
 			Value createCString(const std::string& value);
@@ -279,12 +297,19 @@ namespace Noder
 
 			std::unique_ptr<Program> generate(llvm::LLVMContext& context);
 		};
+
+		class NodeState
+		{
+		public:
+			//virtual 
+		};
 	}
 
     class DLLACTION NodeCompiler
     {
     public:
-		std::unique_ptr<CompilerTools::Program> generate();
+		std::unique_ptr<CompilerTools::Program> generateFunctions();
+		std::unique_ptr<CompilerTools::Program> generateAll(Node& mainEntry);
 
 		static void initializeLlvm();
 
@@ -299,7 +324,10 @@ namespace Noder
 		NodeCompiler();
 		NodeCompiler(std::unique_ptr<Enviroment>&&);
     private:
+		std::unordered_map<std::string, std::shared_ptr<CompilerTools::NodeState>> creators;
         std::unique_ptr<Enviroment> env;
 		llvm::LLVMContext context;
+
+		std::vector<CompilerTools::LlvmBuilder::InstructionBlock> generateNode(Node& node, std::vector<CompilerTools::LlvmBuilder::InstructionBlock> entries, std::vector<CompilerTools::LlvmBuilder::Variable>& outputs, CompilerTools::LlvmBuilder& builder);
     };
 }
