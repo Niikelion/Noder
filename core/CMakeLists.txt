@@ -41,7 +41,7 @@ find_package(parselib REQUIRED)
 
 if ("compiler" IN_LIST NODER_MODULES)
 	option(LLVM_CONFIG "Path to llvm-config" "")
-	option(LLVM_CONFIG_D "" CACHE FILEPATH "Path to llvm-config(debug)")
+	option(LLVM_CONFIG_D "Path to llvm-config(debug)" "")
 	
 #	set(LLVM_MODULES "codegen interpreter executionengine linker mcjit mcparser native tablegen")
 	set(LLVM_MODULES "all")
