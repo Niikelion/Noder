@@ -296,6 +296,11 @@ namespace Noder
 		std::unordered_set<Node*> visitedNodes;
 		std::unordered_map<Node*, std::vector<Value>> nodeOutputs;
 
+		LlvmBuilder::Function function("printer", LlvmBuilder::Type::get<void()>(context), *program);
+		LlvmBuilder::InstructionBlock entryPoint(function, "entry");
+
+		builder.setInsertPoint(entryPoint);
+
 		for (auto& flowNode : flowNodes)
 		{
 			std::vector<Node*> nodesToCalculate;
@@ -342,11 +347,6 @@ namespace Noder
 				}
 			}
 		}
-
-		LlvmBuilder::Function function("printer", LlvmBuilder::Type::get<void()>(context), *program);
-		LlvmBuilder::InstructionBlock entryPoint(function, "entry");
-
-		builder.setInsertPoint(entryPoint);
 
 		LlvmBuilder::Value str = builder.createCString("Hello world!\n");
 
