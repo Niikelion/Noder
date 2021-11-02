@@ -415,9 +415,12 @@ namespace Noder
 		Port() : factory(nullptr), type(typeid(void)) {};
 	};
 
+	//TODO: encapsulate members, make them assignable only by constructor to prevent runtime confusion
 	class DLLACTION NodeTemplate
 	{
 	public:
+		using Ptr = std::shared_ptr<NodeTemplate>;
+
 		std::vector<Port> inputs, outputs;
 		std::string action;
 		Port config;
@@ -431,36 +434,61 @@ namespace Noder
 		NodeTemplate() : flowInputPoints(0), flowOutputPoints(0) {}
 	};
 
-	class DLLACTION Node
+	class DLLACTION Node : private std::enable_shared_from_this<Node>
 	{
 	public:
+		using Ptr = std::shared_ptr<Node>;
+
 		struct DLLACTION PortWrapper
 		{
+		public:
+			unsigned getPort() const noexcept;
+			bool isFlowPort() const noexcept;
+			bool isInput() const noexcept;
+			Node& getNode() const;
+			bool isVoid() const noexcept;
+
+			bool operator == (const PortWrapper&) const noexcept;
+			bool operator != (const PortWrapper&) const noexcept;
+
+			PortWrapper& operator >> (PortWrapper& port);
+			PortWrapper& operator << (PortWrapper& port);
+
+			void connect(const PortWrapper&);
+
+			PortWrapper(Node* n, unsigned p, bool i, bool f);
+			PortWrapper(const PortWrapper&) = default;
+
+			static PortWrapper voidPort();
 		private:
 			Node* node;
 			unsigned port;
 			bool flow;
 			bool input;
+		};
+		struct DLLACTION ConstPortWrapper
+		{
 		public:
 			unsigned getPort() const noexcept;
 			bool isFlowPort() const noexcept;
 			bool isInput() const noexcept;
-			const Node* getNode() const noexcept;
-			Node* getNode() noexcept;
-			bool isVoid() noexcept;
+			const Node& getNode() const noexcept;
+			bool isVoid() const noexcept;
 
 			bool operator == (const PortWrapper&) const noexcept;
 			bool operator != (const PortWrapper&) const noexcept;
 
-			PortWrapper operator >> (const PortWrapper& port);
+			ConstPortWrapper(const Node* n, unsigned p, bool i, bool f);
+			ConstPortWrapper(const ConstPortWrapper&) = default;
 
-			void connect(const PortWrapper&);
-
-			PortWrapper(const Node* n, unsigned p, bool i, bool f);
-			PortWrapper(const PortWrapper&) = default;
-
-			static PortWrapper voidPort();
+			static ConstPortWrapper voidPort();
+		private:
+			const Node* node;
+			unsigned port;
+			bool flow;
+			bool input;
 		};
+
 		struct DLLACTION PortTypeWrapper
 		{
 			enum class Type
@@ -476,7 +504,7 @@ namespace Noder
 		public:
 
 			PortWrapper get(unsigned port) const noexcept;
-			inline PortWrapper operator | (unsigned port) const noexcept
+			inline PortWrapper operator [] (unsigned port) const noexcept
 			{
 				return get(port);
 			}
@@ -484,8 +512,25 @@ namespace Noder
 			PortTypeWrapper(Node* n, Type t);
 			PortTypeWrapper(const PortTypeWrapper&) = default;
 		};
+
+		struct DLLACTION ConstPortTypeWrapper
+		{
+		private:
+			Node* node;
+			PortTypeWrapper::Type type;
+		public:
+
+			ConstPortWrapper get(unsigned port) const noexcept;
+			inline ConstPortWrapper operator [] (unsigned port) const noexcept
+			{
+				return get(port);
+			}
+
+			ConstPortTypeWrapper(const Node* n, PortTypeWrapper::Type t);
+			ConstPortTypeWrapper(const ConstPortTypeWrapper&) = default;
+		};
 	private:
-		NodeTemplate* base;
+		NodeTemplate::Ptr base;
 		std::unique_ptr<State> config;
 		std::vector<std::unique_ptr<State>> inputValues;
 		std::unordered_map<unsigned, PortWrapper> inputPorts, flowOutputPorts;
@@ -511,23 +556,43 @@ namespace Noder
 		bool connect(const PortWrapper& source, const PortWrapper& target) noexcept;
 		bool disconnect(const PortWrapper& source, const PortWrapper& target = PortWrapper::voidPort()) noexcept;
 
-		const NodeTemplate* getBase() const noexcept;
+		const std::shared_ptr<NodeTemplate> getBase() const noexcept;
 
-		PortWrapper getPort(unsigned id, bool input, bool flow) const;
+		PortWrapper getPort(unsigned id, bool input, bool flow);
+		ConstPortWrapper getPort(unsigned id, bool input, bool flow) const;
 
-		inline PortWrapper getFlowInputPort(unsigned id) const noexcept
+		PortWrapper getFlowInputPort(unsigned id)
 		{
 			return getPort(id, true, true);
 		}
-		inline PortWrapper getFlowOutputPort(unsigned id) const noexcept
+		ConstPortWrapper getFlowInputPort(unsigned id) const
+		{
+			return getPort(id, true, true);
+		}
+
+		PortWrapper getFlowOutputPort(unsigned id)
 		{
 			return getPort(id, false, true);
 		}
-		inline PortWrapper getInputPort(unsigned id) const noexcept
+		ConstPortWrapper getFlowOutputPort(unsigned id) const
+		{
+			return getPort(id, false, true);
+		}
+
+		PortWrapper getInputPort(unsigned id)
 		{
 			return getPort(id, true, false);
 		}
-		inline PortWrapper getOutputPort(unsigned id) const noexcept
+		ConstPortWrapper getInputPort(unsigned id) const
+		{
+			return getPort(id, true, false);
+		}
+
+		PortWrapper getOutputPort(unsigned id)
+		{
+			return getPort(id, false, false);
+		}
+		ConstPortWrapper getOutputPort(unsigned id) const
 		{
 			return getPort(id, false, false);
 		}
@@ -548,34 +613,33 @@ namespace Noder
 			return it->second;
 		}
 
-		inline unsigned usedFlowInputs()
+		unsigned usedFlowInputs() const
 		{
 			return usedInputs;
 		}
 
-		PortTypeWrapper operator [] (PortType portType) const noexcept;
+		PortTypeWrapper operator [] (PortType portType) noexcept;
+		ConstPortTypeWrapper operator [] (PortType portType) const noexcept;
 
-		Node(NodeTemplate* nodeTemplate);
+		Node(const std::shared_ptr<NodeTemplate>& nodeTemplate);
 	};
 
 	class DLLACTION Enviroment
 	{
-	private:
-		//
 	public:
-		std::vector<std::unique_ptr<NodeTemplate>> nodeTemplates;
-		std::vector<std::unique_ptr<Node>> nodes;
+		std::vector<std::shared_ptr<NodeTemplate>> nodeTemplates;
+		std::vector<std::shared_ptr<Node>> nodes;
 
 
 		void clearNodes();
 		void clear();
 
-		std::unique_ptr<XML::Tag> exportToXML();
+		std::unique_ptr<XML::Tag> exportToXML() const;
 		void importFromXML(const std::unique_ptr<XML::Tag>& tag);
 
-		Node& createNode(NodeTemplate& base);
-		NodeTemplate& createTemplate();
-		NodeTemplate& createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP);
+		Node::Ptr createNode(const NodeTemplate::Ptr& base);
+		NodeTemplate::Ptr createTemplate();
+		NodeTemplate::Ptr createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP);
 
 		Enviroment() = default;
 		Enviroment(const Enviroment&) = delete;

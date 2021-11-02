@@ -217,24 +217,24 @@ namespace Noder
 	private:
 		struct DLLACTION Scope
 		{
-			Node* origin;
-			std::unordered_set<Node*> nodesToReset;
+			const Node* origin;
+			std::unordered_set<const Node*> nodesToReset;
 
-			Scope(Node* n) : origin(n) {}
+			Scope(const Node* n) : origin(n) {}
 			Scope(const Scope&) = default;
 		};
 
 		std::vector<Scope> pushedScopes;
-		std::unordered_set<Node*> nodesToReset;
-		std::unordered_map<Node*, std::unique_ptr<NodeState>> states;
+		std::unordered_set<const Node*> nodesToReset;
+		std::unordered_map<const Node*, std::unique_ptr<NodeState>> states;
 		std::unique_ptr<Enviroment> env;
-		std::unordered_map<std::string, std::function<std::unique_ptr<NodeState>(const Node&,std::unique_ptr<State>&)>> stateFactories;
+		std::unordered_map<std::string, std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>> stateFactories;
 		std::unique_ptr<State> scopedVariable;
 
-		void pushScope(Node* n);
-		Node* popScope();
+		void pushScope(const Node& n);
+		const Node* popScope();
 
-		void calcNode(Node& endPoint, std::unordered_set<Node*>& visited, std::unordered_set<Node*>& toReset);
+		void calcNode(const Node& endPoint, std::unordered_set<const Node*>& visited, std::unordered_set<const Node*>& toReset);
 
 		template<unsigned> static void unpackTypes(std::vector<Port>&) {}
 		template<unsigned tmp, typename T, typename... Args> static void unpackTypes(std::vector<Port>& p)
@@ -361,32 +361,32 @@ namespace Noder
 		void rebuildState(Node& node);
 		void buildStates();
 
-		Node& createNode(NodeTemplate&);
-		NodeTemplate& createTemplate();
+		Node::Ptr createNode(const NodeTemplate::Ptr&);
+		NodeTemplate::Ptr createTemplate();
 
-		NodeTemplate& createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&,std::unique_ptr<State>&)>& factory);
+		NodeTemplate::Ptr createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&,std::unique_ptr<State>&)>& factory);
 
-		template<typename T> NodeTemplate& createTemplate(const std::string& name="")
+		template<typename T> NodeTemplate::Ptr createTemplate(const std::string& name="")
 		{
-			auto& t = createTemplate();
+			auto t = createTemplate();
 			std::string action = correctName(name);
-			t.action = action;
-			T::preparePorts(t);
+			t->action = action;
+			T::preparePorts(*t);
 
 			addStateFactory(action, genericStateCreatorFunction<T>);
 
 			return t;
 		}
 
-		template<typename... Rets, typename... Args> NodeTemplate& createTemplate(const std::function<std::tuple<Rets...>(Args...)>& f, const std::string& name = "")
+		template<typename... Rets, typename... Args> NodeTemplate::Ptr createTemplate(const std::function<std::tuple<Rets...>(Args...)>& f, const std::string& name = "")
 		{
 			auto& t = createTemplate();
 
 			std::string action = correctName(name);
 
-			t.action = action;
-			unpackTypes<0, Rets...>(t.outputs);
-			unpackTypes<0, Args...>(t.inputs);
+			t->action = action;
+			unpackTypes<0, Rets...>(t->outputs);
+			unpackTypes<0, Args...>(t->inputs);
 
 			addStateFactory(action, [f](const Node& node, std::unique_ptr<State>& i)
 				{
@@ -398,19 +398,19 @@ namespace Noder
 
 			return t;
 		}
-		template<typename... Rets, typename... Args> NodeTemplate& createTemplate(std::tuple<Rets...>(*f)(Args...), const std::string& name = "")
+		template<typename... Rets, typename... Args> NodeTemplate::Ptr createTemplate(std::tuple<Rets...>(*f)(Args...), const std::string& name = "")
 		{
 			return createTemplate(std::function<std::tuple<Rets...>(Args...)>(f),name);
 		}
 
-		template<typename... Args> NodeTemplate& createTemplate(const std::function<void(Args...)>& f, const std::string& name = "")
+		template<typename... Args> NodeTemplate::Ptr createTemplate(const std::function<void(Args...)>& f, const std::string& name = "")
 		{
-			auto& t = createTemplate();
+			auto t = createTemplate();
 
 			std::string action = correctName(name);
 
-			t.action = action;
-			unpackTypes<0, Args...>(t.inputs);
+			t->action = action;
+			unpackTypes<0, Args...>(t->inputs);
 
 			addStateFactory(action, [f](const Node& node, std::unique_ptr<State>& i)
 				{
@@ -422,20 +422,20 @@ namespace Noder
 
 			return t;
 		}
-		template<typename... Args> NodeTemplate& createTemplate(void(*f)(Args...), const std::string& name = "")
+		template<typename... Args> NodeTemplate::Ptr createTemplate(void(*f)(Args...), const std::string& name = "")
 		{
 			return createTemplate(std::function<void(Args...)>(f),name);
 		}
 
-		template<typename T, typename... Args> NodeTemplate& createTemplate(const std::function<T(Args...)>& f, const std::string& name = "")
+		template<typename T, typename... Args> NodeTemplate::Ptr createTemplate(const std::function<T(Args...)>& f, const std::string& name = "")
 		{
-			auto& t = createTemplate();
+			auto t = createTemplate();
 
 			std::string action = correctName(name);
 
-			t.action = action;
-			unpackTypes<0, T>(t.outputs);
-			unpackTypes<0, Args...>(t.inputs);
+			t->action = action;
+			unpackTypes<0, T>(t->outputs);
+			unpackTypes<0, Args...>(t-?inputs);
 
 			addStateFactory(action, [f](const Node& node, std::unique_ptr<State>& i)
 				{
@@ -447,12 +447,12 @@ namespace Noder
 
 			return t;
 		}
-		template<typename T, typename... Args> NodeTemplate& createTemplate(T(*f)(Args...), const std::string& name = "")
+		template<typename T, typename... Args> NodeTemplate::Ptr createTemplate(T(*f)(Args...), const std::string& name = "")
 		{
 			return createTemplate(std::function<T(Args...)>(f),name);
 		}
 
-		template<typename T, typename R = decltype(&T::operator())> NodeTemplate& createTemplate(const T& f, const std::string& name = "")
+		template<typename T, typename R = decltype(&T::operator())> NodeTemplate::Ptr createTemplate(const T& f, const std::string& name = "")
 		{
 			return createTemplate(functorWrapper(&f, &T::operator()), name);
 		}
@@ -467,13 +467,13 @@ namespace Noder
 
 		void resetEnviroment();
 		void resetStates();
-		void resetState(Node* node);
-		void softResetState(Node* node);
+		void resetState(const Node& node);
+		void softResetState(const Node& node);
 
 		void resetFactories();
 
-		void runFrom(Node& startPoint);
-		void calcNode(Node& endPoint);
+		void runFrom(const Node& startPoint);
+		void calcNode(const Node& endPoint);
 
 		NodeInterpreter();
 		NodeInterpreter(std::unique_ptr<Enviroment>&&);

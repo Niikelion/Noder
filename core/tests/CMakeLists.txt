@@ -15,8 +15,6 @@ set(TEST_SOURCES
 
 set(TESTS
 	core-unit
-	interpreter-unit
-	compiler-unit
 )
 
 if ("interpreter" IN_LIST NODER_MODULES)

@@ -70,22 +70,21 @@ namespace Noder
 		}
 	}
 
-	Node& NodeInterpreter::createNode(NodeTemplate& t)
+	Node::Ptr NodeInterpreter::createNode(const NodeTemplate::Ptr& t)
 	{
-		Node& n = env->createNode(t);
-		buildState(n);
+		Node::Ptr n = env->createNode(t);
+		buildState(*n);
 		return n;
 	}
-	NodeTemplate& NodeInterpreter::createTemplate()
+	NodeTemplate::Ptr NodeInterpreter::createTemplate()
 	{
 		return env->createTemplate();
 	}
 	
-	NodeTemplate& NodeInterpreter::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory)
+	NodeTemplate::Ptr NodeInterpreter::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory)
 	{
-		NodeTemplate& t = env->createTemplate(name, inP, outP, flowInP, flowOutP);
+		NodeTemplate::Ptr t = env->createTemplate(name, inP, outP, flowInP, flowOutP);
 		addStateFactory(name, factory);
-
 		return t;
 	}
 	
@@ -137,14 +136,14 @@ namespace Noder
 		}
 	}
 
-	void NodeInterpreter::resetState(Node* node)
+	void NodeInterpreter::resetState(const Node& node)
 	{
-		states.at(node)->hardReset();
+		states.at(&node)->hardReset();
 	}
 
-	void NodeInterpreter::softResetState(Node* node)
+	void NodeInterpreter::softResetState(const Node& node)
 	{
-		states.at(node)->softReset();
+		states.at(&node)->softReset();
 	}
 
 	void NodeInterpreter::resetFactories()
@@ -152,10 +151,10 @@ namespace Noder
 		stateFactories.clear();
 	}
 
-	void NodeInterpreter::runFrom(Node& startPoint)
+	void NodeInterpreter::runFrom(const Node& startPoint)
 	{
-		std::unordered_set<Node*>tmp, toReset;
-		Node* c = &startPoint;
+		std::unordered_set<const Node*> tmp, toReset;
+		const Node* c = &startPoint;
 
 		unsigned redirected = 0;
 
@@ -168,7 +167,7 @@ namespace Noder
 			calcNode(*c, tmp, toReset);
 
 			if (state.pushesNewScope())
-				pushScope(c);
+				pushScope(*c);
 
 			redirected = state.getTargetFlowPort();
 
@@ -182,31 +181,31 @@ namespace Noder
 			else
 			{
 				//get next node
-				c = const_cast<Node*>(portOfNext.getNode());
+				c = const_cast<Node*>(&portOfNext.getNode());
 			}
 		}
 		resetStates();
 	}
-	void NodeInterpreter::calcNode(Node& endPoint)
+	void NodeInterpreter::calcNode(const Node& endPoint)
 	{
-		std::unordered_set<Node*>tmp, toReset;
+		std::unordered_set<const Node*> tmp, toReset;
 		calcNode(endPoint, tmp, toReset);
 	}
 
-	void NodeInterpreter::pushScope(Node* n)
+	void NodeInterpreter::pushScope(const Node& n)
 	{
-		pushedScopes.emplace_back(n);
+		pushedScopes.emplace_back(&n);
 	}
 
-	Node* NodeInterpreter::popScope()
+	const Node* NodeInterpreter::popScope()
 	{
 		if (pushedScopes.size() > 0)
 		{
-			Node* r = pushedScopes.back().origin;
+			const Node* r = pushedScopes.back().origin;
 
 			for (auto node : pushedScopes.back().nodesToReset)
 			{
-				resetState(node);
+				resetState(*node);
 			}
 
 			pushedScopes.pop_back();
@@ -215,7 +214,7 @@ namespace Noder
 		return nullptr;
 	}
 
-	void NodeInterpreter::calcNode(Node& endPoint, std::unordered_set<Node*>& visited, std::unordered_set<Node*>& toReset)
+	void NodeInterpreter::calcNode(const Node& endPoint, std::unordered_set<const Node*>& visited, std::unordered_set<const Node*>& toReset)
 	{
 		//TODO: convert recursion to iteration
 		if (visited.find(&endPoint) != visited.end())
@@ -246,17 +245,17 @@ namespace Noder
 			}
 			else
 			{
-				auto it = states.find(p.getNode());
+				auto it = states.find(&p.getNode());
 				if (it != states.end())
 				{
 					State* state = it->second->getCachedOutputs()[p.getPort()].get();
 					if (!state->isReady())
 					{
-						if (p.getNode()->usedFlowInputs() > 0)
+						if (p.getNode().usedFlowInputs() > 0)
 						{
 							throw std::logic_error("Cannot access node from the future.");
 						}
-						calcNode(*const_cast<Node*>(p.getNode()), visited, toReset);
+						calcNode(const_cast<Node&>(p.getNode()), visited, toReset);
 					}
 					inputs[i] = state;
 				}

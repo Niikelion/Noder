@@ -94,17 +94,12 @@ namespace Noder
 	{
 		return input;
 	}
-	const Node* Node::PortWrapper::getNode() const noexcept
+	Node& Node::PortWrapper::getNode() const
 	{
-		return node;
+		return *node;
 	}
 
-	Node* Node::PortWrapper::getNode() noexcept
-	{
-		return const_cast<Node*>(node);
-	}
-
-	bool Node::PortWrapper::isVoid() noexcept
+	bool Node::PortWrapper::isVoid() const noexcept
 	{
 		return node == nullptr;
 	}
@@ -119,10 +114,16 @@ namespace Noder
 		return node != t.node || port != t.port || flow != t.flow || input != t.input;
 	}
 
-	Node::PortWrapper Node::PortWrapper::operator >>(const PortWrapper& port)
+	Node::PortWrapper& Node::PortWrapper::operator >>(PortWrapper& port)
 	{
 		connect(port);
 		return port;
+	}
+
+	Node::PortWrapper& Node::PortWrapper::operator<<(PortWrapper& port)
+	{
+		port.connect(*this);
+		return *this;
 	}
 
 	void Node::PortWrapper::connect(const PortWrapper& t)
@@ -131,9 +132,9 @@ namespace Noder
 			node->connect(*this, t);
 	}
 
-	Node::PortWrapper::PortWrapper(const Node* n, unsigned p, bool i, bool f)
+	Node::PortWrapper::PortWrapper(Node* n, unsigned p, bool i, bool f)
 	{
-		node = const_cast<Node*>(n);
+		node = n;
 		port = p;
 		input = i;
 		flow = f;
@@ -183,7 +184,7 @@ namespace Noder
 		type = t;
 	}
 
-	const NodeTemplate* Node::getBase() const noexcept
+	const NodeTemplate::Ptr Node::getBase() const noexcept
 	{
 		return base;
 	}
@@ -213,18 +214,21 @@ namespace Noder
 
 	bool Node::connect(const PortWrapper& source, const PortWrapper& target) noexcept
 	{
-		if (source.getNode() != this || target.getNode() == nullptr)
+		//sanity check
+		if (source.isVoid() || &source.getNode() != this)
 			return false;
 
-		if (!(source.isInput() ^ target.isInput())) //in-in/out-out connection
+		//in-in/out-out connection
+		if (!(source.isInput() ^ target.isInput()))
 			return false;
 
-		if (source.isFlowPort() ^ target.isFlowPort()) //different port types
+		//different port types
+		if (source.isFlowPort() ^ target.isFlowPort())
 			return false;
 
 		unsigned char v = (source.isInput() ? 1 : 0) | (source.isFlowPort() ? 2 : 0);
 
-		Node* n = const_cast<Node*>(target.getNode());
+		Node& n = target.getNode();
 
 		switch (v)
 		{
@@ -241,10 +245,11 @@ namespace Noder
 					return target == t;
 				});
 
-			if (it2 == it->second.end() && target.getNode()->inputPorts.find(target.getPort()) == target.getNode()->inputPorts.end()) //node not already connected, target has free port
+			//node not already connected, target has free port
+			if (it2 == it->second.end() && target.getNode().inputPorts.find(target.getPort()) == target.getNode().inputPorts.end())
 			{
 				it->second.emplace_back(target);
-				n->inputPorts.emplace(target.getPort(), source);
+				n.inputPorts.emplace(target.getPort(), source);
 			}
 			else
 			{
@@ -259,10 +264,10 @@ namespace Noder
 			if (it == inputPorts.end()) //can only connect if not already
 			{
 				inputPorts.emplace(source.getPort(), target);
-				auto it2 = n->outputPorts.find(target.getPort());
-				if (it2 == n->outputPorts.end())
+				auto it2 = n.outputPorts.find(target.getPort());
+				if (it2 == n.outputPorts.end())
 				{
-					it2 = n->outputPorts.emplace(std::piecewise_construct, std::forward_as_tuple(target.getPort()), std::tuple<>()).first;
+					it2 = n.outputPorts.emplace(std::piecewise_construct, std::forward_as_tuple(target.getPort()), std::tuple<>()).first;
 				}
 
 				it2->second.emplace_back(source);
@@ -279,10 +284,10 @@ namespace Noder
 			if (it == flowOutputPorts.end()) //can only connect if not already
 			{
 				flowOutputPorts.emplace(source.getPort(), target);
-				auto it2 = n->flowInputPorts.find(target.getPort());
-				if (it2 == n->flowInputPorts.end())
+				auto it2 = n.flowInputPorts.find(target.getPort());
+				if (it2 == n.flowInputPorts.end())
 				{
-					it2 = n->flowInputPorts.emplace(std::piecewise_construct, std::forward_as_tuple(target.getPort()), std::tuple<>()).first;
+					it2 = n.flowInputPorts.emplace(std::piecewise_construct, std::forward_as_tuple(target.getPort()), std::tuple<>()).first;
 				}
 
 				it2->second.emplace_back(source);
@@ -306,10 +311,10 @@ namespace Noder
 					return target == t;
 				});
 
-			if (it2 == it->second.end() && target.getNode()->flowOutputPorts.find(target.getPort()) == target.getNode()->flowOutputPorts.end()) //node not already connected, target has free port
+			if (it2 == it->second.end() && target.getNode().flowOutputPorts.find(target.getPort()) == target.getNode().flowOutputPorts.end()) //node not already connected, target has free port
 			{
 				it->second.emplace_back(target);
-				n->flowOutputPorts.emplace(target.getPort(), source);
+				n.flowOutputPorts.emplace(target.getPort(), source);
 			}
 			else
 			{
@@ -331,18 +336,19 @@ namespace Noder
 	{
 		bool voidAll = target == PortWrapper::voidPort();
 
-		if (source.getNode() != this)
+		//sanity check
+		if (&source.getNode() != this)
 			return false;
 
-		if (!(source.isInput() ^ target.isInput()) && !voidAll) //in-in/out-out connection
+		//in-in/out-out connection
+		if (!(source.isInput() ^ target.isInput()) && !voidAll)
 			return false;
 
-		if (source.isFlowPort() ^ target.isFlowPort() && !voidAll) //different port types
+		//different port types
+		if (source.isFlowPort() ^ target.isFlowPort() && !voidAll)
 			return false;
 
 		unsigned char v = (source.isInput() ? 1 : 0) | (source.isFlowPort() ? 2 : 0);
-
-		Node* n = const_cast<Node*>(target.getNode());
 
 		switch (v)
 		{
@@ -361,8 +367,7 @@ namespace Noder
 				{
 					for (const auto& i : it->second)
 					{
-						Node* t = const_cast<Node*>(i.getNode());
-						t->inputPorts.erase(i.getPort());
+						i.getNode().inputPorts.erase(i.getPort());
 					}
 					it->second.clear();
 				}
@@ -380,7 +385,7 @@ namespace Noder
 					{
 						if (*it2 == target)
 						{
-							n->inputPorts.erase(target.getPort());
+							target.getNode().inputPorts.erase(target.getPort());
 							it->second.erase(it2);
 						}
 						else
@@ -402,10 +407,10 @@ namespace Noder
 					return false;
 				}
 
-				n = const_cast<Node*>(it->second.getNode());
+				Node& n = it->second.getNode();
 
-				auto it2 = n->outputPorts.find(it->second.getPort());
-				if (it2 != n->outputPorts.end())
+				auto it2 = n.outputPorts.find(it->second.getPort());
+				if (it2 != n.outputPorts.end())
 				{
 					auto it3 = std::find(it2->second.begin(), it2->second.end(), source);
 					if (it3 != it2->second.end())
@@ -439,10 +444,10 @@ namespace Noder
 					return false;
 				}
 
-				n = const_cast<Node*>(it->second.getNode());
+				Node& n = it->second.getNode();
 
-				auto it2 = n->flowInputPorts.find(it->second.getPort());
-				if (it2 != n->flowInputPorts.end())
+				auto it2 = n.flowInputPorts.find(it->second.getPort());
+				if (it2 != n.flowInputPorts.end())
 				{
 					auto it3 = std::find(it2->second.begin(), it2->second.end(), source);
 					if (it3 != it2->second.end())
@@ -481,8 +486,7 @@ namespace Noder
 				{
 					for (const auto& i : it->second)
 					{
-						Node* t = const_cast<Node*>(i.getNode());
-						t->flowOutputPorts.erase(i.getPort());
+						i.getNode().flowOutputPorts.erase(i.getPort());
 					}
 					it->second.clear();
 				}
@@ -500,7 +504,7 @@ namespace Noder
 					{
 						if (*it2 == target)
 						{
-							n->flowOutputPorts.erase(target.getPort());
+							target.getNode().flowOutputPorts.erase(target.getPort());
 							it->second.erase(it2);
 						}
 						else
@@ -522,7 +526,7 @@ namespace Noder
 		return true;
 	}
 
-	Node::PortWrapper Node::getPort(unsigned id, bool input, bool flow) const
+	Node::PortWrapper Node::getPort(unsigned id, bool input, bool flow)
 	{
 		if (input)
 		{
@@ -553,12 +557,17 @@ namespace Noder
 		return PortWrapper(this, id, input, flow);
 	}
 
-	Node::PortTypeWrapper Node::operator[](PortType portType) const noexcept
+	Node::ConstPortTypeWrapper Node::operator[] (PortType portType) const noexcept
 	{
-		return PortTypeWrapper(const_cast<Node*>(this), portType);
+		return ConstPortTypeWrapper(this, portType);
 	}
 
-	Node::Node(NodeTemplate* nodeTemplate)
+	Node::PortTypeWrapper Node::operator[] (PortType portType) noexcept
+	{
+		return PortTypeWrapper(this, portType);
+	}
+
+	Node::Node(const NodeTemplate::Ptr& nodeTemplate)
 	{
 		usedInputs = 0;
 		base = nodeTemplate;
@@ -576,7 +585,7 @@ namespace Noder
 		nodes.clear();
 		nodeTemplates.clear();
 	}
-	std::unique_ptr<XML::Tag> Enviroment::exportToXML()
+	std::unique_ptr<XML::Tag> Enviroment::exportToXML() const
 	{
 		std::unique_ptr<XML::Tag> root = std::make_unique<XML::Tag>();
 		root->name = "Enviroment";
@@ -591,7 +600,7 @@ namespace Noder
 
 		for (auto& node : nodes)
 		{
-			const NodeTemplate* base = node->getBase();
+			NodeTemplate::Ptr base = node->getBase();
 
 			std::unique_ptr<XML::Tag> nodeTag = std::make_unique<XML::Tag>();
 			nodeTag->name = "Node";
@@ -611,7 +620,7 @@ namespace Noder
 
 						value->setAttribute("port", std::to_string(p));
 						value->setAttribute("targetId", std::to_string(port.getPort()));
-						value->setAttribute("connectedTo", std::to_string(nodeMappings.at(port.getNode())));
+						value->setAttribute("connectedTo", std::to_string(nodeMappings.at(&port.getNode())));
 
 						portsTag->addChild(std::move(value));
 					}
@@ -627,7 +636,7 @@ namespace Noder
 					if (!port.isVoid())
 					{
 						//port connected to another node
-						value->setAttribute("targetId", std::to_string(nodeMappings.at(port.getNode())));
+						value->setAttribute("targetId", std::to_string(nodeMappings.at(&port.getNode())));
 						value->setAttribute("connectedTo", std::to_string(port.getPort()));
 
 						portsTag->addChild(std::move(value));
@@ -675,10 +684,10 @@ namespace Noder
 	{
 		if (tag->name == "Enviroment")
 		{
-			std::unordered_map<std::string, NodeTemplate*> templateMapping;
+			std::unordered_map<std::string, NodeTemplate::Ptr> templateMapping;
 			for (auto& base : nodeTemplates)
 			{
-				templateMapping.emplace(base->action, base.get());
+				templateMapping.emplace(base->action, base);
 			}
 			std::unordered_map<std::string, Node*> mapping;
 			//first pass, create nodes and configs
@@ -695,8 +704,8 @@ namespace Noder
 					auto it = templateMapping.find(baseV.val);
 					if (it != templateMapping.end())
 					{
-						Node& n = createNode(*it->second);
-						mapping.emplace(idV.val, &n);
+						Node::Ptr n = createNode(it->second);
+						mapping.emplace(idV.val, n.get());
 
 						for (auto& i : nodeTag->children)
 						{
@@ -705,7 +714,7 @@ namespace Noder
 								continue;
 							if (configTag->name == "Config")
 							{
-								n.getConfig()->deserialize(configTag->formatContents(true));
+								n->getConfig()->deserialize(configTag->formatContents(true));
 							}
 						}
 					}
@@ -781,29 +790,29 @@ namespace Noder
 			}
 		}
 	}
-	Node& Enviroment::createNode(NodeTemplate& base)
+	Node::Ptr Enviroment::createNode(const NodeTemplate::Ptr& base)
 	{
-		nodes.emplace_back(std::make_unique<Node>(&base));
-		return *nodes.back();
+		nodes.emplace_back(std::make_shared<Node>(base));
+		return nodes.back();
 	}
-	NodeTemplate& Enviroment::createTemplate()
+	NodeTemplate::Ptr Enviroment::createTemplate()
 	{
 		nodeTemplates.emplace_back(std::make_unique<NodeTemplate>());
-		return *nodeTemplates.back();
+		return nodeTemplates.back();
 	}
-	NodeTemplate& Enviroment::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP)
+	NodeTemplate::Ptr Enviroment::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP)
 	{
-		NodeTemplate& t = createTemplate();
+		NodeTemplate::Ptr t = createTemplate();
 
 		for (auto& i : inP)
-			t.inputs.emplace_back(i);
+			t->inputs.emplace_back(i);
 		for (auto& i : outP)
-			t.outputs.emplace_back(i);
+			t->outputs.emplace_back(i);
 
-		t.flowInputPoints = flowInP;
-		t.flowOutputPoints = flowOutP;
+		t->flowInputPoints = flowInP;
+		t->flowOutputPoints = flowOutP;
 
-		t.action = name;
+		t->action = name;
 
 		return t;
 	}

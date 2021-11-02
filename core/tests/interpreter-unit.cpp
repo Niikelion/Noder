@@ -101,36 +101,36 @@ TEST_CASE("Interpreter - non functor node creation and execution", "[unit],[inte
 
 	INFO("Create node definitions using existing functions and classes.");
 
-	NodeTemplate& sinT = interpreter.createTemplate((float_overload)sin);
-	NodeTemplate& swapT = interpreter.createTemplate(swapFloat);
-	NodeTemplate& floatSetterT = interpreter.createTemplate<ExternalFloatSetter>();
-	NodeTemplate& stringReaderT = interpreter.createTemplate<ConfigStringReader>();
-	NodeTemplate& printStringT = interpreter.createTemplate<StringPrinter>();
+	NodeTemplate::Ptr sinT = interpreter.createTemplate((float_overload)sin);
+	NodeTemplate::Ptr swapT = interpreter.createTemplate(swapFloat);
+	NodeTemplate::Ptr floatSetterT = interpreter.createTemplate<ExternalFloatSetter>();
+	NodeTemplate::Ptr stringReaderT = interpreter.createTemplate<ConfigStringReader>();
+	NodeTemplate::Ptr printStringT = interpreter.createTemplate<StringPrinter>();
 
-	floatSetterT.config.setType<float>();
-	floatSetterT.flowInputPoints = 1;
-	floatSetterT.flowOutputPoints = 1;
+	floatSetterT->config.setType<float>();
+	floatSetterT->flowInputPoints = 1;
+	floatSetterT->flowOutputPoints = 1;
 
-	stringReaderT.config.setType<std::string>();
+	stringReaderT->config.setType<std::string>();
 
-	printStringT.config.setType<std::stringstream>();
-	printStringT.flowInputPoints = 1;
-	printStringT.flowOutputPoints = 1;
+	printStringT->config.setType<std::stringstream>();
+	printStringT->flowInputPoints = 1;
+	printStringT->flowOutputPoints = 1;
 
 	INFO("Create nodes and initialize configs.");
 	//nodes from templates using functions
 
-	Node& sinN1 = interpreter.createNode(sinT);
-	Node& swapN1 = interpreter.createNode(swapT);
-	Node& floatSetterN1 = interpreter.createNode(floatSetterT);
-	Node& floatSetterN2 = interpreter.createNode(floatSetterT);
-	Node& stringReaderN1 = interpreter.createNode(stringReaderT);
-	Node& printStringN1 = interpreter.createNode(printStringT);
+	Node::Ptr sinN1 = interpreter.createNode(sinT);
+	Node::Ptr swapN1 = interpreter.createNode(swapT);
+	Node::Ptr floatSetterN1 = interpreter.createNode(floatSetterT);
+	Node::Ptr floatSetterN2 = interpreter.createNode(floatSetterT);
+	Node::Ptr stringReaderN1 = interpreter.createNode(stringReaderT);
+	Node::Ptr printStringN1 = interpreter.createNode(printStringT);
 
-	floatSetterN1.getConfig()->setValue<float>(0);
-	floatSetterN2.getConfig()->setValue<float>(0);
-	stringReaderN1.getConfig()->setValue<std::string>(str);
-	printStringN1.getConfig()->emplaceValue<std::stringstream>();
+	floatSetterN1->getConfig()->setValue<float>(0);
+	floatSetterN2->getConfig()->setValue<float>(0);
+	stringReaderN1->getConfig()->setValue<std::string>(str);
+	printStringN1->getConfig()->emplaceValue<std::stringstream>();
 
 	INFO("Setup connections.");
 
@@ -138,15 +138,15 @@ TEST_CASE("Interpreter - non functor node creation and execution", "[unit],[inte
 	
 	REQUIRE_NOTHROW([&]()
 		{
-			stringReaderN1.getOutputPort(0) >> printStringN1.getInputPort(0);
-			stringReaderN1.getOutputPort(1) >> swapN1.getInputPort(0);
-			swapN1.setInputValue<float>(1,0.f);
-			swapN1.getOutputPort(0) >> sinN1.getInputPort(0);
-			sinN1.getOutputPort(0) >> floatSetterN1.getInputPort(0);
-			swapN1.getOutputPort(1) >> floatSetterN2.getInputPort(0);
+			stringReaderN1->getOutputPort(0) >> printStringN1->getInputPort(0);
+			stringReaderN1->getOutputPort(1) >> swapN1->getInputPort(0);
+			swapN1->setInputValue<float>(1,0.f);
+			swapN1->getOutputPort(0) >> sinN1->getInputPort(0);
+			sinN1->getOutputPort(0) >> floatSetterN1->getInputPort(0);
+			swapN1->getOutputPort(1) >> floatSetterN2->getInputPort(0);
 
-			printStringN1.getFlowOutputPort(0) >> floatSetterN1.getFlowInputPort(0);
-			floatSetterN1.getFlowOutputPort(0) >> floatSetterN2.getFlowInputPort(0);
+			printStringN1->getFlowOutputPort(0) >> floatSetterN1->getFlowInputPort(0);
+			floatSetterN1->getFlowOutputPort(0) >> floatSetterN2->getFlowInputPort(0);
 		}());
 
 	//pure functor network
@@ -155,10 +155,10 @@ TEST_CASE("Interpreter - non functor node creation and execution", "[unit],[inte
 
 	REQUIRE_NOTHROW([&]()
 		{
-			interpreter.runFrom(printStringN1);
+			interpreter.runFrom(*printStringN1);
 		}());
 
-	REQUIRE( printStringN1.getConfig()->getValue<std::stringstream>().str() == str );
+	REQUIRE( printStringN1->getConfig()->getValue<std::stringstream>().str() == str );
 }
 
 TEST_CASE("Interpreter - flow redirection", "[unit],[interpreter]")
@@ -169,5 +169,6 @@ TEST_CASE("Interpreter - flow redirection", "[unit],[interpreter]")
 
 	NodeInterpreter interpreter;
 
-	NodeTemplate& readExternalIntT = interpreter.createTemplate();
+	NodeTemplate::Ptr readExternalIntT = interpreter.createTemplate();
+	//TODO: do
 }

@@ -5,6 +5,9 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 
+#include <unordered_set>
+#include <unordered_map>
+
 namespace Noder
 {
 	namespace CompilerTools
@@ -276,32 +279,10 @@ namespace Noder
 			//
 		};
 
-		class Node
-		{
-		public:
-			std::function<void(Node&, LlvmBuilder& builder,std::vector<Value> inputs,std::vector<Value>& outputs)> generator;
-			inline void generate(LlvmBuilder& builder, std::vector<Value> inputs, std::vector<Value>& outputs)
-			{
-				if (generator)
-					generator(*this, builder, inputs, outputs);
-			}
-
-			std::vector<Node*> flowOutputs;
-			std::map<unsigned, std::pair<std::shared_ptr<Node>, unsigned>> inputToChildOutputMapping;
-		};
-
 		class StructureBuilder
 		{
 		public:
-			std::vector<std::shared_ptr<Node>> flowNodes;
-
-			std::unique_ptr<Program> generate(llvm::LLVMContext& context);
-		};
-
-		class NodeState
-		{
-		public:
-			//virtual 
+			std::unique_ptr<Program> generate(llvm::LLVMContext& context, const Node& entry, const std::string& function);
 		};
 	}
 
@@ -324,10 +305,69 @@ namespace Noder
 		NodeCompiler();
 		NodeCompiler(std::unique_ptr<Enviroment>&&);
     private:
-		std::unordered_map<std::string, std::shared_ptr<CompilerTools::NodeState>> creators;
+		using GeneratorType = void(
+			const Node& entry,
+			CompilerTools::LlvmBuilder& builder,
+			std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
+			std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
+			std::vector<CompilerTools::Value> inputs,
+			std::vector<CompilerTools::Value>& outputs);
+
+		class NodeState
+		{
+		public:
+			virtual void generate(
+				const Node& entry,
+				CompilerTools::LlvmBuilder& builder,
+				std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
+				std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
+				std::vector<CompilerTools::Value> inputs,
+				std::vector<CompilerTools::Value>& outputs) = 0;
+		};
+
+		class FunctionNodeState : public NodeState
+		{
+		public:
+			virtual void generate(
+				const Node& entry,
+				CompilerTools::LlvmBuilder& builder,
+				std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
+				std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
+				std::vector<CompilerTools::Value> inputs,
+				std::vector<CompilerTools::Value>& outputs) override;
+		private:
+			std::function<GeneratorType> generator;
+		};
+
+		class CompilerState
+		{
+		public:
+			CompilerTools::LlvmBuilder& builder;
+			std::unordered_set<const Node*> calculatedNodes;
+			std::unordered_set<const Node*> visitedNodes;
+			std::unordered_map<const Node*, std::vector<CompilerTools::Value>> nodeOutputs;
+
+			CompilerState(CompilerTools::LlvmBuilder& b) : builder(b) {}
+		};
+
+		std::unordered_map<std::string, std::function<std::shared_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>> stateFactories;
+		std::unordered_map<const Node*, std::shared_ptr<NodeState>> states;
         std::unique_ptr<Enviroment> env;
 		llvm::LLVMContext context;
 
-		std::vector<CompilerTools::LlvmBuilder::InstructionBlock> generateNode(Node& node, std::vector<CompilerTools::LlvmBuilder::InstructionBlock> entries, std::vector<CompilerTools::LlvmBuilder::Variable>& outputs, CompilerTools::LlvmBuilder& builder);
+		std::vector<CompilerTools::LlvmBuilder::InstructionBlock> generateNode(
+			const Node& node,
+			CompilerTools::LlvmBuilder& builder,
+			std::vector<CompilerTools::LlvmBuilder::InstructionBlock> entries,
+			std::vector<CompilerTools::Value> inputs,
+			std::vector<CompilerTools::Value>& outputs);
+
+		void generateInstruction(
+			const Node& entry,
+			CompilerState& state,
+			std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
+			std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs);
+
+		void generateFull(const Node& entry, CompilerTools::LlvmBuilder& builder);
     };
 }
