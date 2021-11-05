@@ -644,6 +644,37 @@ namespace Noder
 		return PortWrapper(this, id, input, flow);
 	}
 
+	Node::ConstPortWrapper Node::getPort(unsigned id, bool input, bool flow) const
+	{
+		if (input)
+		{
+			if (flow)
+			{
+				if (id >= getBase()->flowInputPoints)
+					throw std::out_of_range("Invalid port number");
+			}
+			else
+			{
+				if (id >= getBase()->inputs.size())
+					throw std::out_of_range("Invalid port number");
+			}
+		}
+		else
+		{
+			if (flow)
+			{
+				if (id >= getBase()->flowOutputPoints)
+					throw std::out_of_range("Invalid port number");
+			}
+			else
+			{
+				if (id >= getBase()->outputs.size())
+					throw std::out_of_range("Invalid port number");
+			}
+		}
+		return ConstPortWrapper(this, id, input, flow);
+	}
+
 	Node::ConstPortTypeWrapper Node::operator[] (PortType portType) const noexcept
 	{
 		return ConstPortTypeWrapper(this, portType);

@@ -94,7 +94,7 @@ namespace Noder
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
 				std::tuple<Rets...> t(UnpackCaller<std::tuple<Rets...>(Args...)>::call(function, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
-				unpackTuple<sizeof...(Rets)>(outputs, t);
+				TypeUtils::unpackTuple(t, outputs);
 			}
 
 			FunctionNodeState(const std::function<std::tuple<Rets...>(Args...)>& f) : function(f) {}
@@ -136,13 +136,12 @@ namespace Noder
 
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
+				TypeUtils::VectorCaller<std::tuple<Rets...>(Args...)>::call(this, &ObjectNodeState<std::tuple<Rets...>(Args...)>::calculateWrapper, inputs, outputs, _noder_hacks_::index_sequence<sizeof...(Args)>());
+
+				/*
 				std::tuple<Rets...> t(UnpackCaller<std::tuple<Rets...>(Args...)>::call(this, &ObjectNodeState<std::tuple<Rets...>(Args...)>::calculateWrapper, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
-				unpackTuple<sizeof...(Rets)>(outputs, t);
-			}
-			static void preparePorts(NodeTemplate& t)
-			{
-				unpackTypes<0, Rets...>(t.outputs);
-				unpackTypes<0, Args...>(t.inputs);
+				TypeUtils::unpackTuple(outputs, t);
+				*/
 			}
 
 			virtual std::tuple<Rets...> calculate(Args...) = 0;

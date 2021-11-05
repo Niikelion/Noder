@@ -711,48 +711,67 @@ namespace Noder
 				p.emplace_back(_noder_hacks_::tag<T>{});
 				_unpackPorts<0, Args...>(p);
 			}
+
+			template<unsigned> void _unpackTypes(std::vector<std::type_index>&) {}
+			template<unsigned, typename T, typename... Args> void _unpackTypes(std::vector<std::type_index>& p)
+			{
+				p.emplace_back(typeid(T));
+				_unpackTypes<0, Args...>(p);
+			}
+		
+			template<unsigned i, typename... Args> typename std::enable_if<i != 0>::type _unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t)
+			{
+				outputs[sizeof...(Args) - i]->setValue(std::get<sizeof...(Args) - i>(t));
+				_unpackTuple<i - 1, Args...>(outputs, t);
+			}
+
+			template<unsigned i, typename... Args> typename std::enable_if<i == 0>::type _unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t) {}
 		}
 
 		template<typename... Args> void unpackPorts(std::vector<Port>& p)
 		{
 			details::_unpackPorts<0, Args...>(p);
 		}
-
-		template<unsigned i, typename... Args> static typename std::enable_if<i != 0>::type unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t)
+		template<typename... Args> void unpackTypes(std::vector<std::type_index>& p)
 		{
-			outputs[sizeof...(Args) - i]->setValue(std::get<sizeof...(Args) - i>(t));
-			unpackTuple<i - 1, Args...>(outputs, t);
+			details::_unpackTypes<0, Args...>(p);
 		}
 
-		template<unsigned i, typename... Args> static typename std::enable_if<i == 0>::type unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t) {}
+		template<typename... Args> void unpackTuple(const std::tuple<Args...>& t, std::vector<std::unique_ptr<State>>& values)
+		{
+			values.resize(sizeof...(Args));
+			details::_unpackTuple<sizeof...(Args)>(values, t);
+		}
 
-		template<typename T, size_t I>static T& unpackArgument(const std::vector<const State*>& args)
+		template<typename T, size_t I> T& unpackArgument(const std::vector<const State*>& args)
 		{
 			return const_cast<State*>(args[I])->getValue<T>();
 		}
 
-		template<typename T> struct UnpackCaller {};
-		template<typename... Rets, typename... Args> struct UnpackCaller<std::tuple<Rets...>(Args...)>
+		template<typename T> struct VectorCaller {};
+		template<typename... Rets, typename... Args> struct VectorCaller<std::tuple<Rets...>(Args...)>
 		{
 		public:
-			template<size_t... I> static std::tuple<Rets...> call(
+			template<size_t... I> static void call(
 				const std::function<std::tuple<Rets...>(Args...)>& f,
 				const std::vector<const State*>& inputs,
+				std::vector<std::unique_ptr<State>>& outputs,
 				_noder_hacks_::sequence<I...> i)
 			{
-				return f(unpackArgument<Args, I>(inputs)...);
+				return unpackTuple(f(unpackArgument<Args, I>(inputs)...), outputs);
 			}
-			template<typename T, size_t... I> static std::tuple<Rets...> call(
+			template<typename T, size_t... I> static void call(
 				T* obj,
 				std::tuple<Rets...>(T::* func)(Args...),
 				const std::vector<const State*>& inputs,
+				std::vector<std::unique_ptr<State>>& outputs,
 				_noder_hacks_::sequence<I...> i)
 			{
-				return (obj->*func)(unpackArgument<Args, I>(inputs)...);
+				return unpackTuple((obj->*func)(unpackArgument<Args, I>(inputs)...), outputs);
 			}
 		};
 
-		template<typename... Args> struct UnpackCaller<void(Args...)>
+		template<typename... Args> struct VectorCaller<void(Args...)>
 		{
 		public:
 			template<size_t... I> static void call(
@@ -772,7 +791,7 @@ namespace Noder
 			}
 		};
 
-		template<typename Ret, typename... Args> struct UnpackCaller<Ret(Args...)>
+		template<typename Ret, typename... Args> struct VectorCaller<Ret(Args...)>
 		{
 		public:
 			template<size_t... I> static Ret call(
@@ -792,7 +811,7 @@ namespace Noder
 			}
 		};
 
-		template<typename T, typename... Rets, typename... Args> std::function<std::tuple<Rets...>(Args...)>static functorWrapper(const T* obj, std::tuple<Rets...>(T::* func)(Args...) const)
+		template<typename T, typename... Rets, typename... Args> std::function<std::tuple<Rets...>(Args...)> static functorWrapper(const T* obj, std::tuple<Rets...>(T::* func)(Args...) const)
 		{
 			return std::function<std::tuple<Rets...>(Args...)>(*obj);
 		}
