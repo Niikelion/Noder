@@ -108,9 +108,8 @@ namespace Noder
 		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
 		LlvmBuilder::Function function("main", LlvmBuilder::Type::get<int()>(context), *program);
-		LlvmBuilder::InstructionBlock entryPoint(function, "entry");
 
-		//
+		generateFull(mainEntry, builder, function);
 
 		return program;
 	}
@@ -160,6 +159,7 @@ namespace Noder
 	std::vector<CompilerTools::LlvmBuilder::InstructionBlock> NodeCompiler::generateNode(
 		const Node& node,
 		CompilerTools::LlvmBuilder& builder,
+		CompilerTools::LlvmBuilder::Function function,
 		std::vector<CompilerTools::LlvmBuilder::InstructionBlock> entries,
 		std::vector<CompilerTools::Value> inputs,
 		std::vector<CompilerTools::Value>& outputs)
@@ -172,38 +172,8 @@ namespace Noder
 		}
 		
 		auto base = node.getBase();
-		/*
-		std::vector<CompilerTools::Value> inputs;
-		inputs.resize(base->outputs.size());
-		
-		//gather inputs
-		for (size_t i = 0; i < inputs.size(); ++i)
-		{
-			auto port = node.getInputPortTarget(i);
-			if (port.isVoid())
-			{
-				//TODO: handle const value
-				//port not connected
-			}
-			else
-			{
-				const auto& n = port.getNode();
-				auto it2 = states.find(&n);
-				if (it2 == states.end())
-				{
-					//TODO: throw, missing node state
-				}
-				//TODO: check for invalid index
-				CompilerTools::Value* v = it2->second->outputs[port.getPort()].get();
-				if (v == nullptr)
-				{
-					//TODO: throw, output not generated yet
-				}
-				inputs[i] = *v;
-			}
-		}
-		*/
-		it->second->generate(node, builder, entries, ret, inputs, outputs);
+
+		it->second->generate(node, builder, function, entries, ret, inputs, outputs);
 
 		return ret;
 	}
@@ -211,22 +181,23 @@ namespace Noder
 	void NodeCompiler::generateInstruction(
 		const Node& entry,
 		CompilerState& state,
+		CompilerTools::LlvmBuilder::Function function,
 		std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
 		std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs)
 	{
 		using namespace CompilerTools;
 		for (int i = 0; i <= 0; ++i)
 		{
-			std::vector<const Noder::Node*> nodesToCalculate;
+			std::vector<const Node*> nodesToCalculate;
 			nodesToCalculate.push_back(&entry);
 			state.visitedNodes.insert(&entry);
 
 			while (!nodesToCalculate.empty())
 			{
-				const Noder::Node* n = nodesToCalculate.back();
+				const Node* n = nodesToCalculate.back();
 				bool depsAlreadyResolved = true;
 
-				std::unordered_set<const Noder::Node*> neededNodes;
+				std::unordered_set<const Node*> neededNodes;
 
 				const auto base = n->getBase();
 
@@ -237,7 +208,7 @@ namespace Noder
 					auto port = n->getInputPort(i);
 					if (!port.isVoid())
 					{
-						const Noder::Node& t = port.getNode();
+						const Node& t = port.getNode();
 						neededNodes.insert(&t);
 					}
 				}
@@ -248,6 +219,8 @@ namespace Noder
 					{
 						if (state.visitedNodes.count(dep) > 0)
 							throw std::logic_error("Cyclic dependency detected");
+						if (dep->getBase()->isFlowNode())
+							throw std::logic_error("Cannot access node from the future");
 						depsAlreadyResolved = false;
 						nodesToCalculate.push_back(dep);
 						state.visitedNodes.insert(dep);
@@ -267,10 +240,36 @@ namespace Noder
 
 					for (int i = 0; i < inputs.size(); ++i)
 					{
-						//TODO: gather inputs
+						auto portState = n->getInputState(i);
+						if (portState != nullptr)
+						{
+							//translate input using node state
+							inputs[i] = nodeStateIt->second->translate(portState);
+						}
+						else
+						{
+							//get input from connected node output
+							auto target = n->getInputPortTarget(i);
+							if (target.isVoid())
+							{
+								//TODO: throw, we need that connection
+							}
+							else
+							{
+								auto targetOutputsIt = state.nodeOutputs.find(&target.getNode());
+								if (targetOutputsIt == state.nodeOutputs.end())
+								{
+									//TODO: throw, missing node output
+								}
+								else
+								{
+									inputs[i] = targetOutputsIt->second[target.getPort()];
+								}
+							}
+						}
 					}
 
-					nodeStateIt->second->generate(*n, state.builder, flowInputs, flowOutputs, inputs, outputs);
+					nodeStateIt->second->generate(*n, state.builder, function, flowInputs, flowOutputs, inputs, outputs);
 
 					state.nodeOutputs.emplace(n, std::move(outputs));
 
@@ -280,11 +279,42 @@ namespace Noder
 		}
 	}
 
-	void NodeCompiler::generateFull(const Node& entry, CompilerTools::LlvmBuilder& builder)
+	void NodeCompiler::generateFull(
+		const Node& entry,
+		CompilerTools::LlvmBuilder& builder,
+		CompilerTools::LlvmBuilder::Function function)
 	{
 		using namespace CompilerTools;
-		LlvmBuilder::InstructionBlock entryBlock();
-		//
+		LlvmBuilder::InstructionBlock entryBlock(function, "entry");
+		LlvmBuilder::InstructionBlock startBlock(function, entryBlock, "start");
+
+		std::vector<std::pair<LlvmBuilder::InstructionBlock, const Node*>> entries;
+		entries.emplace_back(startBlock, &entry);
+
+		CompilerState state(builder);
+
+		//traverse node graph starting from entry generating code for every node
+		while (!entries.empty())
+		{
+			auto e = entries.back();
+			entries.pop_back();
+			//check if this node was already calculated in pararell branch
+			if (!state.calculatedNodes.count(e.second))
+			{
+				//TODO: generate node, save its flow inputs and outputs
+			}
+		}
+
+		//traverse node graph second time
+		//now, that we have all nodes needed generated we can begin sewing program into one piece
+		entries.emplace_back(startBlock, &entry);
+		while (!entries.empty())
+		{
+			auto e = entries.back();
+			entries.pop_back();
+			
+			//TODO: iterate flow inputs and create correct flow from connected nodes to given flow input
+		}
 	}
 
 	void* CompilerTools::ExecutionEngine::getSymbol(const std::string& name)
@@ -401,13 +431,16 @@ namespace Noder
 		builder.SetInsertPoint(block.getBlock());
 	}
 
-	std::unique_ptr<CompilerTools::Program> Noder::CompilerTools::StructureBuilder::generate(llvm::LLVMContext& context, const Noder::Node& entry, const std::string& fun)
+	std::unique_ptr<CompilerTools::Program> Noder::CompilerTools::StructureBuilder::generate(
+		llvm::LLVMContext& context,
+		const Noder::Node& entry,
+		const std::string& fun)
 	{
 		
 		using namespace CompilerTools;
 		LlvmBuilder builder(context);
 		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>("test", context));
-		/*
+		
 		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
 		std::unordered_set<const Noder::Node*> calculatedNodes;
@@ -419,82 +452,13 @@ namespace Noder
 
 		builder.setInsertPoint(entryPoint);
 
-		for (int i=0; i<=0; ++i)
-		{
-			std::vector<const Noder::Node*> nodesToCalculate;
-			nodesToCalculate.push_back(&entry);
-			visitedNodes.insert(&entry);
+		LlvmBuilder::Value str = builder.createCString("Hello world!\n");
 
-			while (!nodesToCalculate.empty())
-			{
-				const Noder::Node* n = nodesToCalculate.back();
-				bool depsAlreadyResolved = true;
-
-				std::unordered_set<const Noder::Node*> neededNodes;
-
-				const auto base = n->getBase();
-
-				assert(base != nullptr);
-
-				for (int i=0; i < base->inputs.size(); ++i)
-				{
-					auto port = n->getInputPort(i);
-					if (!port.isVoid())
-					{
-						const Noder::Node& t = port.getNode();
-						neededNodes.insert(&t);
-					}
-				}
-
-				for (auto& dep : neededNodes)
-				{
-					if (!calculatedNodes.count(dep))
-					{
-						if (visitedNodes.count(dep) > 0)
-							throw std::logic_error("Cyclic dependency detected");
-						depsAlreadyResolved = false;
-						nodesToCalculate.push_back(dep);
-						visitedNodes.insert(dep);
-					}
-				}
-				if (depsAlreadyResolved)
-				{
-					nodesToCalculate.pop_back();
-					std::vector<Value> inputs, outputs;
-					inputs.resize(base->inputs.size());
-
-					//TODO: adapt to new generators concepts
-
-					//gather inputs
-					for (int i = 0; i < inputs.size(); ++i)
-					{
-						//
-					}
-
-					auto nodeStateIt = states.find(n);
-
-					
-					for (auto& mapping : n->inputToChildOutputMapping)
-					{
-						if (mapping.first >= inputs.size())
-							throw std::logic_error("There are missing input values");
-						inputs[mapping.first] = nodeOutputs.at(mapping.second.first.get())[mapping.second.second];
-						n->generate(builder, inputs, outputs);
-						nodeOutputs.emplace(n,outputs);
-					}
-					
-					calculatedNodes.insert(n);
-				}
-			}
-		}
-
-		//LlvmBuilder::Value str = builder.createCString("Hello world!\n");
-
-		//LlvmBuilder::ExternalFunction putsFunc("puts", LlvmBuilder::Type::get<int32_t(int8_t*)>(context), *program);
-		//builder.addFunctionCall(putsFunc, { str });
+		LlvmBuilder::ExternalFunction putsFunc("puts", LlvmBuilder::Type::get<int32_t(int8_t*)>(context), *program);
+		builder.addFunctionCall(putsFunc, { str });
 
 		builder.addVoidReturn();
-		*/
+		
 		return program;
 	}
 }

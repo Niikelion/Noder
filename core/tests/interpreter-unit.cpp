@@ -152,7 +152,6 @@ TEST_CASE("Interpreter - non functor node creation and execution", "[unit],[inte
 	//pure functor network
 
 	INFO("Run both node programs and compare results");
-
 	REQUIRE_NOTHROW([&]()
 		{
 			interpreter.runFrom(*printStringN1);

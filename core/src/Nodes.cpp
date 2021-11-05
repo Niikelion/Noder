@@ -145,6 +145,58 @@ namespace Noder
 		return PortWrapper(nullptr, 0, false, false);
 	}
 
+	unsigned Node::ConstPortWrapper::getPort() const noexcept
+	{
+		return port;
+	}
+
+	bool Node::ConstPortWrapper::isFlowPort() const noexcept
+	{
+		return flow;
+	}
+
+	bool Node::ConstPortWrapper::isInput() const noexcept
+	{
+		return input;
+	}
+
+	const Node& Node::ConstPortWrapper::getNode() const noexcept
+	{
+		return *node;
+	}
+
+	bool Node::ConstPortWrapper::isVoid() const noexcept
+	{
+		return node == nullptr;
+	}
+
+	bool Node::ConstPortWrapper::operator==(const ConstPortWrapper& t) const noexcept
+	{
+		return node == t.node && flow == t.flow && input == t.input;
+	}
+
+	bool Node::ConstPortWrapper::operator!=(const ConstPortWrapper& t) const noexcept
+	{
+		return node != t.node || flow != t.flow || input != t.input;
+	}
+
+	Node::ConstPortWrapper::ConstPortWrapper(const PortWrapper& p) :
+		node(p.isVoid() ? nullptr : &p.getNode()),
+		port(p.getPort()),
+		flow(p.isFlowPort()),
+		input(p.isInput()) { }
+
+	Node::ConstPortWrapper::ConstPortWrapper(const Node* n, unsigned p, bool i, bool f) :
+		node(n),
+		port(p),
+		flow(f),
+		input(i) { }
+
+	Node::ConstPortWrapper Node::ConstPortWrapper::voidPort()
+	{
+		return ConstPortWrapper(nullptr, 0, false, false);
+	}
+
 	Node::PortWrapper Node::PortTypeWrapper::get(unsigned port) const noexcept
 	{
 		bool input = false, flow = false;
@@ -183,6 +235,41 @@ namespace Noder
 		node = n;
 		type = t;
 	}
+
+	Node::ConstPortWrapper Node::ConstPortTypeWrapper::get(unsigned port) const noexcept
+	{
+		bool input = false, flow = false;
+		switch (type)
+		{
+		case PortTypeWrapper::Type::FlowOutput:
+		{
+			input = false;
+			flow = true;
+			break;
+		}
+		case PortTypeWrapper::Type::FlowInput:
+		{
+			input = true;
+			flow = true;
+			break;
+		}
+		case PortTypeWrapper::Type::ValueOutput:
+		{
+			input = false;
+			flow = false;
+			break;
+		}
+		case PortTypeWrapper::Type::ValueInput:
+		{
+			input = true;
+			flow = false;
+			break;
+		}
+		}
+		return ConstPortWrapper(node, port, input, flow);
+	}
+
+	Node::ConstPortTypeWrapper::ConstPortTypeWrapper(const Node* n, PortTypeWrapper::Type t) : node(n), type(t) { }
 
 	const NodeTemplate::Ptr Node::getBase() const noexcept
 	{

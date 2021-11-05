@@ -308,6 +308,7 @@ namespace Noder
 		using GeneratorType = void(
 			const Node& entry,
 			CompilerTools::LlvmBuilder& builder,
+			CompilerTools::LlvmBuilder::Function function,
 			std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
 			std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
 			std::vector<CompilerTools::Value> inputs,
@@ -319,22 +320,38 @@ namespace Noder
 			virtual void generate(
 				const Node& entry,
 				CompilerTools::LlvmBuilder& builder,
+				CompilerTools::LlvmBuilder::Function function,
 				std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
 				std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
 				std::vector<CompilerTools::Value> inputs,
 				std::vector<CompilerTools::Value>& outputs) = 0;
+
+			virtual CompilerTools::Value translate(const PortState* state) = 0;
 		};
 
-		class FunctionNodeState : public NodeState
+		template<typename T> class FunctionNodeState : public NodeState
 		{
 		public:
 			virtual void generate(
 				const Node& entry,
 				CompilerTools::LlvmBuilder& builder,
+				CompilerTools::LlvmBuilder::Function function,
 				std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
 				std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
 				std::vector<CompilerTools::Value> inputs,
-				std::vector<CompilerTools::Value>& outputs) override;
+				std::vector<CompilerTools::Value>& outputs) override
+			{
+				if (!generator)
+				{
+					//TODO: throw, missing generator function
+				}
+				generator(builder, function flowInputs, flowOutputs, inputs, outputs);
+			}
+
+			virtual CompilerTools::Value translate(const PortState* state) override
+			{
+				//TODO: do
+			}
 		private:
 			std::function<GeneratorType> generator;
 		};
@@ -358,6 +375,7 @@ namespace Noder
 		std::vector<CompilerTools::LlvmBuilder::InstructionBlock> generateNode(
 			const Node& node,
 			CompilerTools::LlvmBuilder& builder,
+			CompilerTools::LlvmBuilder::Function function,
 			std::vector<CompilerTools::LlvmBuilder::InstructionBlock> entries,
 			std::vector<CompilerTools::Value> inputs,
 			std::vector<CompilerTools::Value>& outputs);
@@ -365,9 +383,13 @@ namespace Noder
 		void generateInstruction(
 			const Node& entry,
 			CompilerState& state,
+			CompilerTools::LlvmBuilder::Function function,
 			std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
 			std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs);
 
-		void generateFull(const Node& entry, CompilerTools::LlvmBuilder& builder);
+		void generateFull(
+			const Node& entry,
+			CompilerTools::LlvmBuilder& builder,
+			CompilerTools::LlvmBuilder::Function function);
     };
 }

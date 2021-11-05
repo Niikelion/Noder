@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <type_traits>
 #include <stdexcept>
+#include <functional>
+#include <algorithm>
 
 #include "NodeUtils.hpp"
 #include <parselib/XML/xml.hpp>
@@ -36,6 +38,20 @@ namespace Noder
 		template<class...>struct types { using type = types; };
 		template<class T>struct tag { using type = T; };
 		template<class Tag>using type_t = typename Tag::type;
+
+		template<typename T> using Extract = typename T::type;
+		template<size_t...> struct sequence { using type = sequence; };
+
+		template<typename T1, typename T2> struct combine;
+		template<size_t... I1, size_t... I2> struct combine<sequence<I1...>, sequence<I2...>> : sequence<I1..., (I2 + sizeof...(I1))...> {};
+		template<typename T1, typename T2> using Combine = Extract<combine<T1, T2>>;
+
+		template<size_t N> struct sequence_generator;
+		template<size_t N> using index_sequence = Extract<sequence_generator<N>>;
+
+		template<size_t N> struct sequence_generator : Combine<index_sequence<N / 2>, index_sequence<N - N / 2>> {};
+		template<> struct sequence_generator<0> : sequence<> {};
+		template<> struct sequence_generator<1> : sequence<0> {};
 
 		namespace details
 		{
@@ -394,13 +410,6 @@ namespace Noder
 
 	class DLLACTION Port
 	{
-	private:
-		template<typename T> static std::unique_ptr<State> pointStateFactory()
-		{
-			return std::make_unique<State>(State(_noder_hacks_::tag<T>{}));
-		}
-		std::type_index type;
-		std::unique_ptr<State>(*factory)();
 	public:
 		std::type_index getType() const noexcept;
 
@@ -413,6 +422,14 @@ namespace Noder
 		std::unique_ptr<State> createState() const;
 
 		Port() : factory(nullptr), type(typeid(void)) {};
+		template<typename T> Port(_noder_hacks_::tag<T>) : type(typeid(T)), factory(pointStateFactory<T>) {}
+	private:
+		template<typename T> static std::unique_ptr<State> pointStateFactory()
+		{
+			return std::make_unique<State>(State(_noder_hacks_::tag<T>{}));
+		}
+		std::type_index type;
+		std::unique_ptr<State>(*factory)();
 	};
 
 	//TODO: encapsulate members, make them assignable only by constructor to prevent runtime confusion
@@ -434,6 +451,7 @@ namespace Noder
 		NodeTemplate() : flowInputPoints(0), flowOutputPoints(0) {}
 	};
 
+	//TODO: remove inlines
 	class DLLACTION Node : private std::enable_shared_from_this<Node>
 	{
 	public:
@@ -475,9 +493,10 @@ namespace Noder
 			const Node& getNode() const noexcept;
 			bool isVoid() const noexcept;
 
-			bool operator == (const PortWrapper&) const noexcept;
-			bool operator != (const PortWrapper&) const noexcept;
+			bool operator == (const ConstPortWrapper&) const noexcept;
+			bool operator != (const ConstPortWrapper&) const noexcept;
 
+			ConstPortWrapper(const PortWrapper& p);
 			ConstPortWrapper(const Node* n, unsigned p, bool i, bool f);
 			ConstPortWrapper(const ConstPortWrapper&) = default;
 
@@ -491,6 +510,7 @@ namespace Noder
 
 		struct DLLACTION PortTypeWrapper
 		{
+			//TODO: move to another place, possibly split into 2 enums?
 			enum class Type
 			{
 				FlowOutput,
@@ -512,11 +532,10 @@ namespace Noder
 			PortTypeWrapper(Node* n, Type t);
 			PortTypeWrapper(const PortTypeWrapper&) = default;
 		};
-
 		struct DLLACTION ConstPortTypeWrapper
 		{
 		private:
-			Node* node;
+			const Node* node;
 			PortTypeWrapper::Type type;
 		public:
 
@@ -597,7 +616,7 @@ namespace Noder
 			return getPort(id, false, false);
 		}
 
-		inline PortWrapper getInputPortTarget(unsigned id) const
+		inline PortWrapper getInputPortTarget(unsigned id)
 		{
 			auto it = inputPorts.find(id);
 			if (it == inputPorts.end())
@@ -605,12 +624,48 @@ namespace Noder
 			return it->second;
 		}
 
-		inline PortWrapper getFlowOutputPortTarget(unsigned id) const
+		inline ConstPortWrapper getInputPortTarget(unsigned id) const
+		{
+			auto it = inputPorts.find(id);
+			if (it == inputPorts.end())
+				return ConstPortWrapper::voidPort();
+			return it->second;
+		}
+
+		inline PortWrapper getFlowOutputPortTarget(unsigned id)
 		{
 			auto it = flowOutputPorts.find(id);
 			if (it == flowOutputPorts.end())
 				return PortWrapper::voidPort();
 			return it->second;
+		}
+
+		inline ConstPortWrapper getFlowOutputPortTarget(unsigned id) const
+		{
+			auto it = flowOutputPorts.find(id);
+			if (it == flowOutputPorts.end())
+				return ConstPortWrapper::voidPort();
+			return it->second;
+		}
+
+		inline std::vector<PortWrapper> getFlowInputTargets(unsigned id)
+		{
+			auto it = flowInputPorts.find(id);
+			if (it == flowInputPorts.end())
+				return {};
+			return it->second;
+		}
+
+		inline std::vector<ConstPortWrapper> getFlowInputTarget(unsigned id) const
+		{
+			auto it = flowInputPorts.find(id);
+			if (it == flowInputPorts.end())
+				return {};
+			std::vector<ConstPortWrapper> ret;
+			ret.reserve(it->second.size());
+			for (size_t i = 0; i < ret.size(); ++i)
+				ret.emplace_back(it->second[i]);
+			return ret;
 		}
 
 		unsigned usedFlowInputs() const
@@ -645,4 +700,111 @@ namespace Noder
 		Enviroment(const Enviroment&) = delete;
 		Enviroment(Enviroment&&) noexcept = default;
 	};
+
+	namespace TypeUtils
+	{
+		namespace details
+		{
+			template<unsigned> void _unpackPorts(std::vector<Port>&) {}
+			template<unsigned, typename T, typename... Args> void _unpackPorts(std::vector<Port>& p)
+			{
+				p.emplace_back(_noder_hacks_::tag<T>{});
+				_unpackPorts<0, Args...>(p);
+			}
+		}
+
+		template<typename... Args> void unpackPorts(std::vector<Port>& p)
+		{
+			details::_unpackPorts<0, Args...>(p);
+		}
+
+		template<unsigned i, typename... Args> static typename std::enable_if<i != 0>::type unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t)
+		{
+			outputs[sizeof...(Args) - i]->setValue(std::get<sizeof...(Args) - i>(t));
+			unpackTuple<i - 1, Args...>(outputs, t);
+		}
+
+		template<unsigned i, typename... Args> static typename std::enable_if<i == 0>::type unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t) {}
+
+		template<typename T, size_t I>static T& unpackArgument(const std::vector<const State*>& args)
+		{
+			return const_cast<State*>(args[I])->getValue<T>();
+		}
+
+		template<typename T> struct UnpackCaller {};
+		template<typename... Rets, typename... Args> struct UnpackCaller<std::tuple<Rets...>(Args...)>
+		{
+		public:
+			template<size_t... I> static std::tuple<Rets...> call(
+				const std::function<std::tuple<Rets...>(Args...)>& f,
+				const std::vector<const State*>& inputs,
+				_noder_hacks_::sequence<I...> i)
+			{
+				return f(unpackArgument<Args, I>(inputs)...);
+			}
+			template<typename T, size_t... I> static std::tuple<Rets...> call(
+				T* obj,
+				std::tuple<Rets...>(T::* func)(Args...),
+				const std::vector<const State*>& inputs,
+				_noder_hacks_::sequence<I...> i)
+			{
+				return (obj->*func)(unpackArgument<Args, I>(inputs)...);
+			}
+		};
+
+		template<typename... Args> struct UnpackCaller<void(Args...)>
+		{
+		public:
+			template<size_t... I> static void call(
+				const std::function<void(Args...)>& f,
+				const std::vector<const State*>& inputs,
+				_noder_hacks_::sequence<I...> i)
+			{
+				f(unpackArgument<Args, I>(inputs)...);
+			}
+			template<typename T, size_t... I> static void call(
+				T* obj,
+				void(T::* func)(Args...),
+				const std::vector<const State*>& inputs,
+				_noder_hacks_::sequence<I...> i)
+			{
+				(obj->*func)(unpackArgument<Args, I>(inputs)...);
+			}
+		};
+
+		template<typename Ret, typename... Args> struct UnpackCaller<Ret(Args...)>
+		{
+		public:
+			template<size_t... I> static Ret call(
+				const std::function<Ret(Args...)>& f,
+				const std::vector<const State*>& inputs,
+				_noder_hacks_::sequence<I...> i)
+			{
+				return f(unpackArgument<Args, I>(inputs)...);
+			}
+			template<typename T, size_t... I> static Ret call(
+				T* obj,
+				Ret(T::* func)(Args...),
+				const std::vector<const State*>& inputs,
+				_noder_hacks_::sequence<I...> i)
+			{
+				return (obj->*func)(unpackArgument<Args, I>(inputs)...);
+			}
+		};
+
+		template<typename T, typename... Rets, typename... Args> std::function<std::tuple<Rets...>(Args...)>static functorWrapper(const T* obj, std::tuple<Rets...>(T::* func)(Args...) const)
+		{
+			return std::function<std::tuple<Rets...>(Args...)>(*obj);
+		}
+
+		template<typename T, typename R, typename... Args> std::function<R(Args...)> static functorWrapper(const T* obj, R(T::* func)(Args...) const)
+		{
+			return std::function<R(Args...)>(*obj);
+		}
+
+		template<typename T, typename... Args> std::function<void(Args...)> static functorWrapper(const T* obj, void(T::* func)(Args...) const)
+		{
+			return std::function<void(Args...)>(*obj);
+		}
+	}
 }

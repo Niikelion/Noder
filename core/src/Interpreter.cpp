@@ -83,8 +83,9 @@ namespace Noder
 	
 	NodeTemplate::Ptr NodeInterpreter::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory)
 	{
-		NodeTemplate::Ptr t = env->createTemplate(name, inP, outP, flowInP, flowOutP);
-		addStateFactory(name, factory);
+		auto properName = correctName(name);
+		NodeTemplate::Ptr t = env->createTemplate(properName, inP, outP, flowInP, flowOutP);
+		addStateFactory(properName, factory);
 		return t;
 	}
 	
@@ -171,7 +172,7 @@ namespace Noder
 
 			redirected = state.getTargetFlowPort();
 
-			Node::PortWrapper portOfNext = c->getFlowOutputPortTarget(redirected);
+			auto portOfNext = c->getFlowOutputPortTarget(redirected);
 			//exit if port is not connected
 			if (portOfNext.isVoid())
 			{
@@ -229,7 +230,7 @@ namespace Noder
 		//convert to iterative approach
 		for (unsigned i = 0; i < inputs.size(); ++i)
 		{
-			Node::PortWrapper p = endPoint.getInputPortTarget(i);
+			auto p = endPoint.getInputPortTarget(i);
 			if (p.isVoid())
 			{
 				const PortState* state = endPoint.getInputState(i);

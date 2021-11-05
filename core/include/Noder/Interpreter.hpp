@@ -8,23 +8,6 @@
 
 namespace Noder
 {
-	namespace _noder_hacks_
-	{
-		template<typename T> using Extract = typename T::type;
-		template<size_t...> struct sequence { using type = sequence; };
-
-		template<typename T1, typename T2> struct combine;
-		template<size_t... I1, size_t... I2> struct combine<sequence<I1...>, sequence<I2...>> : sequence<I1..., (I2 + sizeof...(I1))...> {};
-		template<typename T1, typename T2> using Combine = Extract<combine<T1, T2>>;
-
-		template<size_t N> struct sequence_generator;
-		template<size_t N> using index_sequence = Extract<sequence_generator<N>>;
-
-		template<size_t N> struct sequence_generator : Combine<index_sequence<N / 2>, index_sequence<N - N / 2>> {};
-		template<> struct sequence_generator<0> : sequence<> {};
-		template<> struct sequence_generator<1> : sequence<0> {};
-	}
-
 	class DLLACTION NodeCycleException : public std::exception
 	{
 	public:
@@ -148,6 +131,9 @@ namespace Noder
 		template<typename... Rets, typename... Args> class ObjectNodeState<std::tuple<Rets...>(Args...)> : public NodeState
 		{
 		public:
+			using ArgumentTypes = _noder_hacks_::types<Args...>;
+			using ReturnTypes = _noder_hacks_::types<Rets...>;
+
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
 				std::tuple<Rets...> t(UnpackCaller<std::tuple<Rets...>(Args...)>::call(this, &ObjectNodeState<std::tuple<Rets...>(Args...)>::calculateWrapper, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
@@ -171,6 +157,9 @@ namespace Noder
 		template<typename... Args> class ObjectNodeState<void(Args...)> : public NodeState
 		{
 		public:
+			using ArgumentTypes = _noder_hacks_::types<Args...>;
+			using ReturnTypes = _noder_hacks_::types<>;
+
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
 				UnpackCaller<void(Args...)>::call(this, &ObjectNodeState<void(Args...)>::calculateWrapper, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>());
@@ -193,6 +182,9 @@ namespace Noder
 		template<typename Ret, typename... Args> class ObjectNodeState<Ret(Args...)> : public NodeState
 		{
 		public:
+			using ArgumentTypes = _noder_hacks_::types<Args...>;
+			using ReturnTypes = _noder_hacks_::types<Ret>;
+
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
 				outputs.back()->setValue<Ret>(UnpackCaller<Ret(Args...)>::call(this, &ObjectNodeState<Ret(Args...)>::calculateWrapper, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
@@ -366,37 +358,32 @@ namespace Noder
 
 		NodeTemplate::Ptr createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&,std::unique_ptr<State>&)>& factory);
 
+		template<typename... Rets, typename... Args> NodeTemplate::Ptr createTemplate(const std::string& name, _noder_hacks_::types<Args...>, _noder_hacks_::types<Rets...>, const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory, unsigned flowInP = 0, unsigned flowOutP = 0)
+		{
+			std::vector<Port> inputs, outputs;
+			TypeUtils::unpackPorts<Args...>(inputs);
+			TypeUtils::unpackPorts<Rets...>(outputs);
+			return createTemplate(name, inputs, outputs, flowInP, flowOutP, factory);
+		}
+
 		template<typename T> NodeTemplate::Ptr createTemplate(const std::string& name="")
 		{
-			auto t = createTemplate();
-			std::string action = correctName(name);
-			t->action = action;
-			T::preparePorts(*t);
-
-			addStateFactory(action, genericStateCreatorFunction<T>);
-
-			return t;
+			return createTemplate(name, T::ArgumentTypes{}, T::ReturnTypes{}, genericStateCreatorFunction<T>, 0, 0);
 		}
 
 		template<typename... Rets, typename... Args> NodeTemplate::Ptr createTemplate(const std::function<std::tuple<Rets...>(Args...)>& f, const std::string& name = "")
 		{
-			auto& t = createTemplate();
-
-			std::string action = correctName(name);
-
-			t->action = action;
-			unpackTypes<0, Rets...>(t->outputs);
-			unpackTypes<0, Args...>(t->inputs);
-
-			addStateFactory(action, [f](const Node& node, std::unique_ptr<State>& i)
+			return createTemplate(
+				name,
+				_noder_hacks_::types<Args...>{},
+				_noder_hacks_::types<Rets...>{},
+				[f](const Node& node, std::unique_ptr<State>& i) -> std::unique_ptr<NodeState>
 				{
 					auto ret = std::make_unique<FunctionNodeState<std::tuple<Rets...>(Args...)>>(f);
 					ret->setUpInternals(i);
 					ret->attachNode(node);
 					return ret;
-				});
-
-			return t;
+				}, 0, 0);
 		}
 		template<typename... Rets, typename... Args> NodeTemplate::Ptr createTemplate(std::tuple<Rets...>(*f)(Args...), const std::string& name = "")
 		{
@@ -405,22 +392,17 @@ namespace Noder
 
 		template<typename... Args> NodeTemplate::Ptr createTemplate(const std::function<void(Args...)>& f, const std::string& name = "")
 		{
-			auto t = createTemplate();
-
-			std::string action = correctName(name);
-
-			t->action = action;
-			unpackTypes<0, Args...>(t->inputs);
-
-			addStateFactory(action, [f](const Node& node, std::unique_ptr<State>& i)
+			return createTemplate(
+				name,
+				_noder_hacks_::types<Args...>{},
+				_noder_hacks_::types<>{},
+				[f](const Node& node, std::unique_ptr<State>& i)
 				{
 					auto ret = std::make_unique<FunctionNodeState<void(Args...)>>(f);
 					ret->setUpInternals(i);
 					ret->attachNode(node);
 					return ret;
-				});
-
-			return t;
+				}, 0, 0);
 		}
 		template<typename... Args> NodeTemplate::Ptr createTemplate(void(*f)(Args...), const std::string& name = "")
 		{
@@ -429,23 +411,17 @@ namespace Noder
 
 		template<typename T, typename... Args> NodeTemplate::Ptr createTemplate(const std::function<T(Args...)>& f, const std::string& name = "")
 		{
-			auto t = createTemplate();
-
-			std::string action = correctName(name);
-
-			t->action = action;
-			unpackTypes<0, T>(t->outputs);
-			unpackTypes<0, Args...>(t-?inputs);
-
-			addStateFactory(action, [f](const Node& node, std::unique_ptr<State>& i)
+			return createTemplate(
+				name,
+				_noder_hacks_::types<Args...>{},
+				_noder_hacks_::types<T>{},
+				[f](const Node& node, std::unique_ptr<State>& i)
 				{
 					auto ret = std::make_unique<FunctionNodeState<T(Args...)>>(f);
 					ret->setUpInternals(i);
 					ret->attachNode(node);
 					return ret;
-				});
-
-			return t;
+				}, 0 ,0);
 		}
 		template<typename T, typename... Args> NodeTemplate::Ptr createTemplate(T(*f)(Args...), const std::string& name = "")
 		{
