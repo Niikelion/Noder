@@ -89,41 +89,43 @@ namespace Noder
 		template<typename... Rets, typename... Args> class FunctionNodeState<std::tuple<Rets...>(Args...)> : public NodeState
 		{
 		private:
-			std::function<std::tuple<Rets...>(Args...)> function;
+			using Signature = std::tuple<Rets...>(Args...);
+			std::function<Signature> function;
 		public:
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
-				std::tuple<Rets...> t(UnpackCaller<std::tuple<Rets...>(Args...)>::call(function, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
-				TypeUtils::unpackTuple(t, outputs);
+				TypeUtils::VectorCaller<Signature>::call(function, inputs, outputs, _noder_hacks_::index_sequence<sizeof...(Args)>{});
 			}
 
-			FunctionNodeState(const std::function<std::tuple<Rets...>(Args...)>& f) : function(f) {}
+			FunctionNodeState(const std::function<Signature>& f) : function(f) {}
 			FunctionNodeState(FunctionNodeState&&) noexcept = default;
 		};
 		template<typename... Args> class FunctionNodeState<void(Args...)> : public NodeState
 		{
 		private:
-			std::function<void(Args...)> function;
+			using Signature = void(Args...);
+			std::function<Signature> function;
 		public:
-			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>&) override
+			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
-				UnpackCaller<void(Args...)>::call(function, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>());
+				TypeUtils::VectorCaller<Signature>::call(function, inputs, outputs, _noder_hacks_::index_sequence<sizeof...(Args)>{});
 			}
 
-			FunctionNodeState(const std::function<void(Args...)>& f) : function(f) {}
+			FunctionNodeState(const std::function<Signature>& f) : function(f) {}
 			FunctionNodeState(FunctionNodeState&&) noexcept = default;
 		};
 		template<typename Ret, typename... Args> class FunctionNodeState<Ret(Args...)> : public NodeState
 		{
 		private:
-			std::function<Ret(Args...)> function;
+			using Signature = Ret(Args...);
+			std::function<Signature> function;
 		public:
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
-				outputs.back()->setValue<Ret>(UnpackCaller<Ret(Args...)>::call(function, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
+				TypeUtils::VectorCaller<Signature>::call(function, inputs, outputs, _noder_hacks_::index_sequence<sizeof...(Args)>{});
 			}
 
-			FunctionNodeState(const std::function<Ret(Args...)>& f) : function(f) {}
+			FunctionNodeState(const std::function<Signature>& f) : function(f) {}
 			FunctionNodeState(FunctionNodeState&&) noexcept = default;
 		};
 	
@@ -136,18 +138,14 @@ namespace Noder
 
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
-				TypeUtils::VectorCaller<std::tuple<Rets...>(Args...)>::call(this, &ObjectNodeState<std::tuple<Rets...>(Args...)>::calculateWrapper, inputs, outputs, _noder_hacks_::index_sequence<sizeof...(Args)>());
-
-				/*
-				std::tuple<Rets...> t(UnpackCaller<std::tuple<Rets...>(Args...)>::call(this, &ObjectNodeState<std::tuple<Rets...>(Args...)>::calculateWrapper, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
-				TypeUtils::unpackTuple(outputs, t);
-				*/
+				TypeUtils::VectorCaller<Signature>::call(this, &ObjectNodeState<Signature>::calculateWrapper, inputs, outputs, _noder_hacks_::index_sequence<sizeof...(Args)>{});
 			}
 
 			virtual std::tuple<Rets...> calculate(Args...) = 0;
 
 			using NodeState::NodeState;
 		private:
+			using Signature = std::tuple<Rets...>(Args...);
 			std::tuple<Rets...> calculateWrapper(Args... args)
 			{
 				return calculate(args...);
@@ -161,18 +159,14 @@ namespace Noder
 
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
-				UnpackCaller<void(Args...)>::call(this, &ObjectNodeState<void(Args...)>::calculateWrapper, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>());
-			}
-
-			static void preparePorts(NodeTemplate& t)
-			{
-				unpackTypes<0, Args...>(t.inputs);
+				TypeUtils::VectorCaller<Signature>::call(this, &ObjectNodeState<Signature>::calculateWrapper, inputs, outputs, _noder_hacks_::index_sequence<sizeof...(Args)>{});
 			}
 
 			virtual void calculate(Args...) = 0;
 
 			using NodeState::NodeState;
 		private:
+			using Signature = void(Args...);
 			void calculateWrapper(Args... args)
 			{
 				calculate(args...);
@@ -186,7 +180,7 @@ namespace Noder
 
 			virtual void calculate(const std::vector<const State*>& inputs, std::vector<std::unique_ptr<State>>& outputs) override
 			{
-				outputs.back()->setValue<Ret>(UnpackCaller<Ret(Args...)>::call(this, &ObjectNodeState<Ret(Args...)>::calculateWrapper, inputs, _noder_hacks_::index_sequence<sizeof...(Args)>()));
+				TypeUtils::VectorCaller<Signature>::call(this, &ObjectNodeState<Signature>::calculateWrapper, inputs, outputs, _noder_hacks_::index_sequence<sizeof...(Args)>{});
 			}
 
 			virtual Ret calculate(Args...) = 0;
@@ -199,6 +193,7 @@ namespace Noder
 
 			using NodeState::NodeState;
 		private:
+			using Signature = Ret(Args...);
 			Ret calculateWrapper(Args... args)
 			{
 				return calculate(args...);
@@ -226,103 +221,6 @@ namespace Noder
 		const Node* popScope();
 
 		void calcNode(const Node& endPoint, std::unordered_set<const Node*>& visited, std::unordered_set<const Node*>& toReset);
-
-		template<unsigned> static void unpackTypes(std::vector<Port>&) {}
-		template<unsigned tmp, typename T, typename... Args> static void unpackTypes(std::vector<Port>& p)
-		{
-			p.emplace_back();
-			p.back().setType<T>();
-			unpackTypes<tmp, Args...>(p);
-		}
-
-		template<unsigned i, typename... Args> static typename std::enable_if<i != 0>::type unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t)
-		{
-			outputs[sizeof...(Args) - i]->setValue(std::get<sizeof...(Args) - i>(t));
-			unpackTuple<i - 1, Args...>(outputs, t);
-		}
-
-		template<unsigned i, typename... Args> static typename std::enable_if<i == 0>::type unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t) {}
-
-		template<typename T, size_t I>static T& unpackArgument(const std::vector<const State*>& args)
-		{
-			return const_cast<State*>(args[I])->getValue<T>();
-		}
-
-		template<typename T> struct UnpackCaller {};
-		template<typename... Rets, typename... Args> struct UnpackCaller<std::tuple<Rets...>(Args...)>
-		{
-		public:
-			template<size_t... I> static std::tuple<Rets...> call(
-				const std::function<std::tuple<Rets...>(Args...)>& f,
-				const std::vector<const State*>& inputs,
-				_noder_hacks_::sequence<I...> i)
-			{
-				return f(unpackArgument<Args, I>(inputs)...);
-			}
-			template<typename T,size_t... I> static std::tuple<Rets...> call(
-				T* obj,
-				std::tuple<Rets...>(T::* func)(Args...),
-				const std::vector<const State*>& inputs,
-				_noder_hacks_::sequence<I...> i)
-			{
-				return (obj->*func)(unpackArgument<Args, I>(inputs)...);
-			}
-		};
-
-		template<typename... Args> struct UnpackCaller<void(Args...)>
-		{
-		public:
-			template<size_t... I> static void call(
-				const std::function<void(Args...)>& f,
-				const std::vector<const State*>& inputs,
-				_noder_hacks_::sequence<I...> i)
-			{
-				f(unpackArgument<Args, I>(inputs)...);
-			}
-			template<typename T, size_t... I> static void call(
-				T* obj,
-				void(T::* func)(Args...),
-				const std::vector<const State*>& inputs,
-				_noder_hacks_::sequence<I...> i)
-			{
-				(obj->*func)(unpackArgument<Args, I>(inputs)...);
-			}
-		};
-
-		template<typename Ret, typename... Args> struct UnpackCaller<Ret(Args...)>
-		{
-		public:
-			template<size_t... I> static Ret call(
-				const std::function<Ret(Args...)>& f,
-				const std::vector<const State*>& inputs,
-				_noder_hacks_::sequence<I...> i)
-			{
-				return f(unpackArgument<Args, I>(inputs)...);
-			}
-			template<typename T, size_t... I> static Ret call(
-				T* obj,
-				Ret(T::* func)(Args...),
-				const std::vector<const State*>& inputs,
-				_noder_hacks_::sequence<I...> i)
-			{
-				return (obj->*func)(unpackArgument<Args, I>(inputs)...);
-			}
-		};
-
-		template<typename T, typename... Rets, typename... Args> std::function<std::tuple<Rets...>(Args...)>static functorWrapper(const T* obj, std::tuple<Rets...>(T::* func)(Args...) const)
-		{
-			return std::function<std::tuple<Rets...>(Args...)>(*obj);
-		}
-
-		template<typename T, typename R, typename... Args> std::function<R(Args...)> static functorWrapper(const T* obj, R(T::* func)(Args...) const)
-		{
-			return std::function<R(Args...)>(*obj);
-		}
-
-		template<typename T, typename... Args> std::function<void(Args...)> static functorWrapper(const T* obj, void(T::* func)(Args...) const)
-		{
-			return std::function<void(Args...)>(*obj);
-		}
 		
 		std::string correctName(const std::string& name);
 
@@ -429,7 +327,7 @@ namespace Noder
 
 		template<typename T, typename R = decltype(&T::operator())> NodeTemplate::Ptr createTemplate(const T& f, const std::string& name = "")
 		{
-			return createTemplate(functorWrapper(&f, &T::operator()), name);
+			return createTemplate(TypeUtils::functorWrapper(&f, &T::operator()), name);
 		}
 
 		void addStateFactory(const std::string& name ,const std::function<std::unique_ptr<NodeState>(const Node&,std::unique_ptr<State>&)>& factory);

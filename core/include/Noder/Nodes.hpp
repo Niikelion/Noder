@@ -739,7 +739,6 @@ namespace Noder
 
 		template<typename... Args> void unpackTuple(const std::tuple<Args...>& t, std::vector<std::unique_ptr<State>>& values)
 		{
-			values.resize(sizeof...(Args));
 			details::_unpackTuple<sizeof...(Args)>(values, t);
 		}
 
@@ -777,6 +776,7 @@ namespace Noder
 			template<size_t... I> static void call(
 				const std::function<void(Args...)>& f,
 				const std::vector<const State*>& inputs,
+				std::vector<std::unique_ptr<State>>& outputs,
 				_noder_hacks_::sequence<I...> i)
 			{
 				f(unpackArgument<Args, I>(inputs)...);
@@ -785,6 +785,7 @@ namespace Noder
 				T* obj,
 				void(T::* func)(Args...),
 				const std::vector<const State*>& inputs,
+				std::vector<std::unique_ptr<State>>& outputs,
 				_noder_hacks_::sequence<I...> i)
 			{
 				(obj->*func)(unpackArgument<Args, I>(inputs)...);
@@ -794,20 +795,22 @@ namespace Noder
 		template<typename Ret, typename... Args> struct VectorCaller<Ret(Args...)>
 		{
 		public:
-			template<size_t... I> static Ret call(
+			template<size_t... I> static void call(
 				const std::function<Ret(Args...)>& f,
 				const std::vector<const State*>& inputs,
+				std::vector<std::unique_ptr<State>>& outputs,
 				_noder_hacks_::sequence<I...> i)
 			{
-				return f(unpackArgument<Args, I>(inputs)...);
+				outputs.back()->setValue<Ret>(f(unpackArgument<Args, I>(inputs)...));
 			}
-			template<typename T, size_t... I> static Ret call(
+			template<typename T, size_t... I> static void call(
 				T* obj,
 				Ret(T::* func)(Args...),
 				const std::vector<const State*>& inputs,
+				std::vector<std::unique_ptr<State>>& outputs,
 				_noder_hacks_::sequence<I...> i)
 			{
-				return (obj->*func)(unpackArgument<Args, I>(inputs)...);
+				outputs.back()->setValue<Ret>((obj->*func)(unpackArgument<Args, I>(inputs)...));
 			}
 		};
 

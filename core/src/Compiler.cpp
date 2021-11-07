@@ -301,6 +301,7 @@ namespace Noder
 			//check if this node was already calculated in pararell branch
 			if (!state.calculatedNodes.count(e.second))
 			{
+				//std::vector<>
 				//TODO: generate node, save its flow inputs and outputs
 			}
 		}
