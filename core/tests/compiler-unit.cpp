@@ -10,6 +10,17 @@
 
 TEST_CASE("Compiler - temporary test", "[unit],[compiler]")
 {
+	using namespace Noder;
+	NodeCompiler::initializeLlvm();
+	NodeCompiler compiler;
+
+	//TODO: create program
+	Node* node = nullptr;
+
+	auto program = compiler.generateFunction(*node,"test");
+	auto engine = program->getExecutableInstance();
+	engine->getSymbol<int()>("test")();
+
 	/*
 	using namespace Noder;
 	NodeCompiler::initializeLlvm();

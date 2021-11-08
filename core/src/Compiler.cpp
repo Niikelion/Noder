@@ -77,6 +77,7 @@
 
 namespace Noder
 {
+	/*
 	std::unique_ptr<CompilerTools::Program> NodeCompiler::generateFunctions()
 	{
 		using namespace CompilerTools;
@@ -99,17 +100,28 @@ namespace Noder
 
 		return program;
 	}
-	std::unique_ptr<CompilerTools::Program> NodeCompiler::generateAll(Noder::Node& mainEntry)
+	*/
+	std::unique_ptr<CompilerTools::Program> NodeCompiler::generate(const Noder::Node& mainEntry)
+	{
+		return generateFunction(mainEntry, "main");
+	}
+	std::unique_ptr<CompilerTools::Program> NodeCompiler::generateFunction(const Node& entry, const std::string& name)
 	{
 		using namespace CompilerTools;
-
 		LlvmBuilder builder(context);
-		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>("main", context));
+		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>(name, context));
 		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
-		LlvmBuilder::Function function("main", LlvmBuilder::Type::get<int()>(context), *program);
+		//TODO: calculate signature
+		//assume entry node inputs are function inputs
+		//perform search for single exit point
+		//use exit point outputs as function output if it exist, void otherwise
+		//special case: main function, for this case use int as default return type
+		auto type = LlvmBuilder::Type::get<int()>(context);
 
-		generateFull(mainEntry, builder, function);
+		LlvmBuilder::Function function(name, type, *program);
+
+		generateFull(entry, builder, function);
 
 		return program;
 	}
@@ -170,7 +182,7 @@ namespace Noder
 		{
 			//TODO: error handling-state missing
 		}
-		
+
 		auto base = node.getBase();
 
 		it->second->generate(node, builder, function, entries, ret, inputs, outputs);
@@ -284,12 +296,26 @@ namespace Noder
 		CompilerTools::LlvmBuilder& builder,
 		CompilerTools::LlvmBuilder::Function function)
 	{
+
+
+		if (!entry.getBase()->isFlowNode())
+		{
+			//TODO: throw: entry point must be flow node
+		}
+
 		using namespace CompilerTools;
 		LlvmBuilder::InstructionBlock entryBlock(function, "entry");
 		LlvmBuilder::InstructionBlock startBlock(function, entryBlock, "start");
 
-		std::vector<std::pair<LlvmBuilder::InstructionBlock, const Node*>> entries;
-		entries.emplace_back(startBlock, &entry);
+		std::vector<const Node*> entries;
+		entries.emplace_back(&entry);
+
+		struct FlowPack
+		{
+			std::vector<LlvmBuilder::InstructionBlock> inputs, outputs;
+		};
+
+		std::unordered_map<const Node*, FlowPack> packs;
 
 		CompilerState state(builder);
 
@@ -298,24 +324,59 @@ namespace Noder
 		{
 			auto e = entries.back();
 			entries.pop_back();
-			//check if this node was already calculated in pararell branch
-			if (!state.calculatedNodes.count(e.second))
+			//check if this node was already visited in pararell branch
+			if (!state.visitedNodes.count(e))
 			{
-				//std::vector<>
-				//TODO: generate node, save its flow inputs and outputs
+				FlowPack pack;
+				auto base = e->getBase();
+				size_t s = base->flowInputPoints;
+				for (size_t i = 0; i < s; ++i)
+				{
+					pack.inputs.emplace_back(function, base->action + "input_" + std::to_string(i));
+				}
+				generateInstruction(*e, state, function, pack.inputs, pack.outputs);
+				packs.emplace(e, std::move(pack));
 			}
 		}
 
 		//traverse node graph second time
 		//now, that we have all nodes needed generated we can begin sewing program into one piece
-		entries.emplace_back(startBlock, &entry);
+		entries.emplace_back(&entry);
 		while (!entries.empty())
 		{
 			auto e = entries.back();
 			entries.pop_back();
 			
-			//TODO: iterate flow inputs and create correct flow from connected nodes to given flow input
+			auto base = e->getBase();
+
+			auto packIt = packs.find(e);
+			if (packIt == packs.end())
+			{
+				//TODO: throw, missing state, this should not happen
+			}
+
+			//TODO: iterate flow outputs and create correct flow from given flow output to connected node
+			for (size_t i = 0; i < base->flowOutputPoints; ++i)
+			{
+				auto p = e->getFlowOutputPortTarget(i);
+				if (!p.isVoid())
+				{
+					auto targetPackIt = packs.find(&p.getNode());
+					if (targetPackIt == packs.end())
+					{
+						//TODO: throw, missing state
+					}
+					builder.setInsertPoint(packIt->second.outputs[i]);
+					builder.getBuilder().CreateBr(targetPackIt->second.inputs[p.getPort()].getBlock());
+				}
+			}
+			
+			//
 		}
+		//link start to first node
+		auto packIt = packs.find(&entry);
+		builder.setInsertPoint(startBlock);
+		builder.getBuilder().CreateBr(packIt->second.inputs[0].getBlock());
 	}
 
 	void* CompilerTools::ExecutionEngine::getSymbol(const std::string& name)
@@ -431,7 +492,7 @@ namespace Noder
 	{
 		builder.SetInsertPoint(block.getBlock());
 	}
-
+	/*
 	std::unique_ptr<CompilerTools::Program> Noder::CompilerTools::StructureBuilder::generate(
 		llvm::LLVMContext& context,
 		const Noder::Node& entry,
@@ -462,4 +523,5 @@ namespace Noder
 		
 		return program;
 	}
+	*/
 }

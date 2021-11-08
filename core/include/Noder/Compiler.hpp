@@ -263,34 +263,17 @@ namespace Noder
 			llvm::IRBuilder<> builder;
 		};
 
-
-		class BuilderModule
-		{
-		public:
-			//virtual void updateConfig() {};
-
-			BuilderModule(Node& n) : node(&n) {}
-		private:
-			Node* node;
-		};
-
 		class Value
 		{
 			//
-		};
-
-		class StructureBuilder
-		{
-		public:
-			std::unique_ptr<Program> generate(llvm::LLVMContext& context, const Node& entry, const std::string& function);
 		};
 	}
 
     class DLLACTION NodeCompiler
     {
     public:
-		std::unique_ptr<CompilerTools::Program> generateFunctions();
-		std::unique_ptr<CompilerTools::Program> generateAll(Node& mainEntry);
+		std::unique_ptr<CompilerTools::Program> generate(const Node& mainEntry);
+		std::unique_ptr<CompilerTools::Program> generateFunction(const Node& mainEntry, const std::string& name);
 
 		static void initializeLlvm();
 
