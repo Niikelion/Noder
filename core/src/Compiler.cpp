@@ -150,6 +150,13 @@ namespace Noder
 	{
 		return *env;
 	}
+	NodeTemplate::Ptr NodeCompiler::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory)
+	{
+		auto properName = correctName(name);
+		auto ret = env->createTemplate(properName, inP, outP, flowInP, flowOutP);
+		stateFactories.emplace(properName, factory);
+		return ret;
+	}
 	void NodeCompiler::resetEnviroment()
 	{
 		env.reset();
@@ -166,6 +173,11 @@ namespace Noder
 	{
 		env = std::move(t);
 		//TODO: setup builders
+	}
+
+	std::string NodeCompiler::correctName(const std::string& name)
+	{
+		return (name.length() == 0) ? ("__generated" + std::to_string(stateFactories.size())) : name;
 	}
 
 	std::vector<CompilerTools::LlvmBuilder::InstructionBlock> NodeCompiler::generateNode(

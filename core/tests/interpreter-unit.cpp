@@ -168,6 +168,6 @@ TEST_CASE("Interpreter - flow redirection", "[unit],[interpreter]")
 
 	NodeInterpreter interpreter;
 
-	NodeTemplate::Ptr readExternalIntT = interpreter.createTemplate();
+	//NodeTemplate::Ptr readExternalIntT = interpreter.createTemplate();
 	//TODO: do
 }

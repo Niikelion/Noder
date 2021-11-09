@@ -76,10 +76,6 @@ namespace Noder
 		buildState(*n);
 		return n;
 	}
-	NodeTemplate::Ptr NodeInterpreter::createTemplate()
-	{
-		return env->createTemplate();
-	}
 	
 	NodeTemplate::Ptr NodeInterpreter::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory)
 	{

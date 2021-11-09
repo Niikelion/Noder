@@ -251,7 +251,6 @@ namespace Noder
 		void buildStates();
 
 		Node::Ptr createNode(const NodeTemplate::Ptr&);
-		NodeTemplate::Ptr createTemplate();
 
 		NodeTemplate::Ptr createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&,std::unique_ptr<State>&)>& factory);
 

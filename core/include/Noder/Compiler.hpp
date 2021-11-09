@@ -272,6 +272,21 @@ namespace Noder
     class DLLACTION NodeCompiler
     {
     public:
+		class NodeState
+		{
+		public:
+			virtual void generate(
+				const Node& entry,
+				CompilerTools::LlvmBuilder& builder,
+				CompilerTools::LlvmBuilder::Function function,
+				std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
+				std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
+				std::vector<CompilerTools::Value> inputs,
+				std::vector<CompilerTools::Value>& outputs) = 0;
+
+			virtual CompilerTools::Value translate(const PortState* state) = 0;
+		};
+
 		std::unique_ptr<CompilerTools::Program> generate(const Node& mainEntry);
 		std::unique_ptr<CompilerTools::Program> generateFunction(const Node& mainEntry, const std::string& name);
 
@@ -280,6 +295,13 @@ namespace Noder
 		std::unique_ptr<Enviroment> extractEnviroment();
 		std::unique_ptr<Enviroment> swapEnviroment(std::unique_ptr<Enviroment>&&);
 		Enviroment& getEnviroment();
+
+		NodeTemplate::Ptr createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory);
+
+		template<typename T> NodeTemplate::Ptr createTemplate(const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory, const std::string& name)
+		{
+			return NodeTemplate::Ptr();
+		}
 
 		void resetEnviroment();
 
@@ -296,21 +318,6 @@ namespace Noder
 			std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
 			std::vector<CompilerTools::Value> inputs,
 			std::vector<CompilerTools::Value>& outputs);
-
-		class NodeState
-		{
-		public:
-			virtual void generate(
-				const Node& entry,
-				CompilerTools::LlvmBuilder& builder,
-				CompilerTools::LlvmBuilder::Function function,
-				std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
-				std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
-				std::vector<CompilerTools::Value> inputs,
-				std::vector<CompilerTools::Value>& outputs) = 0;
-
-			virtual CompilerTools::Value translate(const PortState* state) = 0;
-		};
 
 		template<typename T> class FunctionNodeState : public NodeState
 		{
@@ -354,6 +361,8 @@ namespace Noder
 		std::unordered_map<const Node*, std::shared_ptr<NodeState>> states;
         std::unique_ptr<Enviroment> env;
 		llvm::LLVMContext context;
+
+		std::string correctName(const std::string& name);
 
 		std::vector<CompilerTools::LlvmBuilder::InstructionBlock> generateNode(
 			const Node& node,
