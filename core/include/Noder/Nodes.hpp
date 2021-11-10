@@ -359,6 +359,8 @@ namespace Noder
 			return info == typeid(T);
 		}
 
+		std::type_index getType() const;
+
 		bool isReady() const noexcept;
 		void reset();
 
@@ -728,6 +730,8 @@ namespace Noder
 			template<unsigned i, typename... Args> typename std::enable_if<i == 0>::type _unpackTuple(std::vector<std::unique_ptr<State>>& outputs, const std::tuple<Args...>& t) {}
 		}
 
+		template<typename... Ts> using Types = _noder_hacks_::types<Ts...>;
+
 		template<typename... Args> void unpackPorts(std::vector<Port>& p)
 		{
 			details::_unpackPorts<0, Args...>(p);
@@ -828,5 +832,22 @@ namespace Noder
 		{
 			return std::function<void(Args...)>(*obj);
 		}
+
+		template<typename T> struct SignatureSplitter {};
+		template<typename... Args> struct SignatureSplitter<void(Args...)>
+		{
+			using ReturnTypes = Types<>;
+			using ArgumentTypes = Types<Args...>;
+		};
+		template<typename... Rets, typename... Args> struct SignatureSplitter<std::tuple<Rets...>(Args...)>
+		{
+			using ReturnTypes = Types<Rets...>;
+			using ArgumentTypes = Types<Args...>;
+		};
+		template<typename T, typename... Args> struct SignatureSplitter<T(Args...)>
+		{
+			using ReturnTypes = Types<T>;
+			using ArgumentTypes = Types<Args...>;
+		};
 	}
 }

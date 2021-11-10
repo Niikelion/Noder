@@ -14,6 +14,11 @@ namespace Noder
 		msg = std::string("Types does not match(source:") + source.name() + ",target:" + target.name() + ")";
 	}
 
+	std::type_index State::getType() const
+	{
+		return info;
+	}
+
 	bool State::isReady() const noexcept
 	{
 		return pointer != nullptr;

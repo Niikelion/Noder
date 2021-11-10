@@ -117,11 +117,14 @@ namespace Noder
 		//perform search for single exit point
 		//use exit point outputs as function output if it exist, void otherwise
 		//special case: main function, for this case use int as default return type
-		auto type = LlvmBuilder::Type::get<int()>(context);
+
+		auto type = LlvmBuilder::Type::get<void()>(context);
 
 		LlvmBuilder::Function function(name, type, *program);
 
 		generateFull(entry, builder, function);
+		
+		//TODO: if type is void, add void return to every free ending branch
 
 		return program;
 	}
@@ -150,10 +153,21 @@ namespace Noder
 	{
 		return *env;
 	}
-	NodeTemplate::Ptr NodeCompiler::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory)
+	Node::Ptr NodeCompiler::createNode(const NodeTemplate::Ptr& base)
 	{
-		auto properName = correctName(name);
-		auto ret = env->createTemplate(properName, inP, outP, flowInP, flowOutP);
+		auto it = stateFactories.find(base->action);
+		if (it != stateFactories.end())
+		{
+			auto node = env->createNode(base);
+			states.emplace(node.get(), it->second(*node));
+			return node;
+		}
+		return Node::Ptr{};
+	}
+	NodeTemplate::Ptr NodeCompiler::createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&)>& factory)
+	{
+		std::string properName = correctName(name);
+		NodeTemplate::Ptr ret = env->createTemplate(properName, inP, outP, flowInP, flowOutP);
 		stateFactories.emplace(properName, factory);
 		return ret;
 	}
@@ -185,8 +199,8 @@ namespace Noder
 		CompilerTools::LlvmBuilder& builder,
 		CompilerTools::LlvmBuilder::Function function,
 		std::vector<CompilerTools::LlvmBuilder::InstructionBlock> entries,
-		std::vector<CompilerTools::Value> inputs,
-		std::vector<CompilerTools::Value>& outputs)
+		std::vector<CompilerTools::LlvmBuilder::Value> inputs,
+		std::vector<CompilerTools::LlvmBuilder::Value>& outputs)
 	{
 		std::vector<CompilerTools::LlvmBuilder::InstructionBlock> ret;
 		auto it = states.find(&node);
@@ -253,7 +267,7 @@ namespace Noder
 				if (depsAlreadyResolved)
 				{
 					nodesToCalculate.pop_back();
-					std::vector<Value> inputs, outputs;
+					std::vector<LlvmBuilder::Value> inputs, outputs;
 					inputs.resize(base->inputs.size());
 
 					auto nodeStateIt = states.find(n);
@@ -268,7 +282,7 @@ namespace Noder
 						if (portState != nullptr)
 						{
 							//translate input using node state
-							inputs[i] = nodeStateIt->second->translate(portState);
+							inputs[i] = nodeStateIt->second->translate(portState, context);
 						}
 						else
 						{
@@ -317,7 +331,9 @@ namespace Noder
 
 		using namespace CompilerTools;
 		LlvmBuilder::InstructionBlock entryBlock(function, "entry");
-		LlvmBuilder::InstructionBlock startBlock(function, entryBlock, "start");
+		LlvmBuilder::InstructionBlock startBlock(function, "start");
+		builder.setInsertPoint(entryBlock);
+		builder.getBuilder().CreateBr(startBlock.getBlock());
 
 		std::vector<const Node*> entries;
 		entries.emplace_back(&entry);
@@ -488,13 +504,13 @@ namespace Noder
 		args.reserve(arguments.size());
 
 		for (const auto& arg : arguments)
-			args.push_back(arg.value);
+			args.emplace_back(arg.getValue());
 
 		builder.CreateCall(function.getHandle(), args, function.getName());
 	}
 	void CompilerTools::LlvmBuilder::addReturn(const Value& value)
 	{
-		builder.CreateRet(value.value);
+		builder.CreateRet(value.getValue());
 	}
 	void CompilerTools::LlvmBuilder::addVoidReturn()
 	{
@@ -504,36 +520,4 @@ namespace Noder
 	{
 		builder.SetInsertPoint(block.getBlock());
 	}
-	/*
-	std::unique_ptr<CompilerTools::Program> Noder::CompilerTools::StructureBuilder::generate(
-		llvm::LLVMContext& context,
-		const Noder::Node& entry,
-		const std::string& fun)
-	{
-		
-		using namespace CompilerTools;
-		LlvmBuilder builder(context);
-		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>("test", context));
-		
-		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
-
-		std::unordered_set<const Noder::Node*> calculatedNodes;
-		std::unordered_set<const Noder::Node*> visitedNodes;
-		std::unordered_map<const Noder::Node*, std::vector<Value>> nodeOutputs;
-
-		LlvmBuilder::Function function("fun", LlvmBuilder::Type::get<void()>(context), *program);
-		LlvmBuilder::InstructionBlock entryPoint(function, "entry");
-
-		builder.setInsertPoint(entryPoint);
-
-		LlvmBuilder::Value str = builder.createCString("Hello world!\n");
-
-		LlvmBuilder::ExternalFunction putsFunc("puts", LlvmBuilder::Type::get<int32_t(int8_t*)>(context), *program);
-		builder.addFunctionCall(putsFunc, { str });
-
-		builder.addVoidReturn();
-		
-		return program;
-	}
-	*/
 }

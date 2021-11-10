@@ -134,30 +134,36 @@ namespace Noder
 			class Value
 			{
 			public:
-				llvm::Value* value;
+				llvm::Value* getValue() const
+				{
+					return value;
+				}
 
 				Value(llvm::Value* v) : value(v) {}
+				Value(const Value& v) : value(v.value) {}
+				Value() = default;//for some reason you cannot copy vector without it???
+			private:
+				llvm::Value* value;
 			};
 
 			class Callee
 			{
 			public:
-
 				virtual llvm::FunctionCallee getHandle() const = 0;
 
-				inline llvm::Function::LinkageTypes getLinkageType()
+				llvm::Function::LinkageTypes getLinkageType() const
 				{
 					return linkageType;
 				}
-				inline void setLinkageType(llvm::Function::LinkageTypes linkage)
+				void setLinkageType(llvm::Function::LinkageTypes linkage)
 				{
 					linkageType = linkage;
 				}
-				inline std::string getName() const
+				std::string getName() const
 				{
 					return name;
 				}
-				inline void setName(const std::string& name)
+				void setName(const std::string& name)
 				{
 					this->name = name;
 				}
@@ -181,6 +187,11 @@ namespace Noder
 				{
 					callee = program.getModule().getOrInsertFunction(name, (llvm::FunctionType*)signature.type);
 				}
+				ExternalFunction(const std::string& name, Type signature, llvm::Module& mod) : Callee(name, llvm::Function::LinkageTypes::ExternalLinkage)
+				{
+					callee = mod.getOrInsertFunction(name, (llvm::FunctionType*)signature.type);
+				}
+
 			private:
 				llvm::FunctionCallee callee;
 			};
@@ -198,7 +209,7 @@ namespace Noder
 					function = llvm::Function::Create((llvm::FunctionType*)(signature.type), getLinkageType(), getName(), program.getModule());
 				}
 
-				llvm::Function* getFunction()
+				llvm::Function* getFunction() const
 				{
 					return function;
 				}
@@ -209,7 +220,7 @@ namespace Noder
 			class InstructionBlock
 			{
 			public:
-				inline llvm::BasicBlock* getBlock() const
+				llvm::BasicBlock* getBlock() const
 				{
 					return block;
 				}
@@ -230,7 +241,7 @@ namespace Noder
 			class Variable
 			{
 			public:
-				llvm::AllocaInst* getAlloca()
+				llvm::AllocaInst* getAlloca() const
 				{
 					return alloca;
 				}
@@ -263,9 +274,36 @@ namespace Noder
 			llvm::IRBuilder<> builder;
 		};
 
-		class Value
+		template<typename T, typename = void> struct TypeTranslator {};
+		template<typename T> struct TypeTranslator<T, std::enable_if_t<std::is_integral_v<T>>>
 		{
-			//
+			static LlvmBuilder::Value translate(T value, llvm::LLVMContext& context)
+			{
+				return LlvmBuilder::Value(llvm::ConstantInt::get(LlvmBuilder::Type::get<T>(context), static_cast<uint64_t>(value), std::is_signed_v<T>));
+			}
+		};
+		template<typename T> struct TypeTranslator<T, std::enable_if_t<std::is_floating_point_v<T>>>
+		{
+			static LlvmBuilder::Value translate(T value, llvm::LLVMContext& context)
+			{
+				return LlvmBuilder::Value(llvm::ConstantFP::get(LlvmBuilder::Type::get<T>(context), static_cast<double>(value)));
+			}
+		};
+		using TranslationMapping = std::unordered_map<std::type_index, std::function<LlvmBuilder::Value(const PortState * s, llvm::LLVMContext&)>>;
+		template<typename... Args> struct TranslationsGenerator
+		{
+			static void addTranslation(TranslationMapping& trans) {}
+		};
+		template<typename T, typename... Args> struct TranslationsGenerator<T, Args...>
+		{
+			static void addTranslation(TranslationMapping& trans)
+			{
+				trans.emplace(typeid(T), [](const PortState* state, llvm::LLVMContext& context)
+					{
+						CompilerTools::TypeTranslator<T>::translate(state->getValue<T>(), context);
+					});
+				TranslationsGenerator<Args...>::addTranslation(trans);
+			}
 		};
 	}
 
@@ -281,11 +319,49 @@ namespace Noder
 				CompilerTools::LlvmBuilder::Function function,
 				std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
 				std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
-				std::vector<CompilerTools::Value> inputs,
-				std::vector<CompilerTools::Value>& outputs) = 0;
+				std::vector<CompilerTools::LlvmBuilder::Value> inputs,
+				std::vector<CompilerTools::LlvmBuilder::Value>& outputs) = 0;
 
-			virtual CompilerTools::Value translate(const PortState* state) = 0;
+			virtual CompilerTools::LlvmBuilder::Value translate(const PortState* state, llvm::LLVMContext& context) = 0;
 		};
+
+		template<typename T> class ObjectNodeState : public NodeState
+		{
+		public:
+			using ReturnTypes = typename TypeUtils::SignatureSplitter<T>::ReturnTypes;
+			using ArgumentTypes = typename TypeUtils::SignatureSplitter<T>::ArgumentTypes;
+
+			virtual CompilerTools::LlvmBuilder::Value translate(const PortState* state, llvm::LLVMContext& context) override
+			{
+				auto transIt = translations.find(state->getType());
+				if (transIt == translations.end())
+				{
+					//TODO: throw, this should not happen
+				}
+				return transIt->second(state, context);
+			}
+			ObjectNodeState()
+			{
+				generateTranslations(translations, ArgumentTypes{});
+			}
+		private:
+			CompilerTools::TranslationMapping translations;
+
+			template<typename... Args> static void generateTranslations(CompilerTools::TranslationMapping& trans, TypeUtils::Types<Args...>)
+			{
+				CompilerTools::TranslationsGenerator<Args...>::addTranslation(trans);
+			}
+		};
+
+		//TODO: extend generator type and allow access to state variable
+		using GeneratorType = void(
+			const Node& entry,
+			CompilerTools::LlvmBuilder& builder,
+			CompilerTools::LlvmBuilder::Function function,
+			std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
+			std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
+			std::vector<CompilerTools::LlvmBuilder::Value> inputs,
+			std::vector<CompilerTools::LlvmBuilder::Value>& outputs);
 
 		std::unique_ptr<CompilerTools::Program> generate(const Node& mainEntry);
 		std::unique_ptr<CompilerTools::Program> generateFunction(const Node& mainEntry, const std::string& name);
@@ -296,11 +372,31 @@ namespace Noder
 		std::unique_ptr<Enviroment> swapEnviroment(std::unique_ptr<Enviroment>&&);
 		Enviroment& getEnviroment();
 
-		NodeTemplate::Ptr createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory);
+		Node::Ptr createNode(const NodeTemplate::Ptr& base);
+		NodeTemplate::Ptr createTemplate(const std::string& name, const std::vector<Port>& inP, const std::vector<Port>& outP, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&)>& factory);
 
-		template<typename T> NodeTemplate::Ptr createTemplate(const std::function<std::unique_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>& factory, const std::string& name)
+		template<typename... Rets, typename... Args> NodeTemplate::Ptr createTemplate(const std::string& name, TypeUtils::Types<Rets...>, TypeUtils::Types<Args...>, unsigned flowInP, unsigned flowOutP, const std::function<std::unique_ptr<NodeState>(const Node&)>& factory)
 		{
-			return NodeTemplate::Ptr();
+			std::vector<Port> inputs, outputs;
+			TypeUtils::unpackPorts<Args...>(inputs);
+			TypeUtils::unpackPorts<Rets...>(outputs);
+			return createTemplate(name, inputs, outputs, flowInP, flowOutP, factory);
+		}
+
+		template<typename T> NodeTemplate::Ptr createTemplate(const std::string& name="")
+		{
+			return createTemplate(name, T::ReturnTypes{}, T::ArgumentTypes{}, 0, 0, [](const Node& n) {
+				return std::make_unique<T>(n, state);
+			});
+		}
+
+		template<typename T> NodeTemplate::Ptr createTemplate(const std::function<GeneratorType>& generator, const std::string& name = "", unsigned flowInP = 0, unsigned flowOutP = 0)
+		{
+			using Signature = TypeUtils::SignatureSplitter<T>;
+			return createTemplate(name, Signature::ReturnTypes{}, Signature::ArgumentTypes{}, flowInP, flowOutP, [generator](const Node&)
+				{
+					return std::make_unique<FunctionNodeState<T>>(generator);
+				});
 		}
 
 		void resetEnviroment();
@@ -310,15 +406,6 @@ namespace Noder
 		NodeCompiler();
 		NodeCompiler(std::unique_ptr<Enviroment>&&);
     private:
-		using GeneratorType = void(
-			const Node& entry,
-			CompilerTools::LlvmBuilder& builder,
-			CompilerTools::LlvmBuilder::Function function,
-			std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
-			std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
-			std::vector<CompilerTools::Value> inputs,
-			std::vector<CompilerTools::Value>& outputs);
-
 		template<typename T> class FunctionNodeState : public NodeState
 		{
 		public:
@@ -328,21 +415,37 @@ namespace Noder
 				CompilerTools::LlvmBuilder::Function function,
 				std::vector<CompilerTools::LlvmBuilder::InstructionBlock> flowInputs,
 				std::vector<CompilerTools::LlvmBuilder::InstructionBlock>& flowOutputs,
-				std::vector<CompilerTools::Value> inputs,
-				std::vector<CompilerTools::Value>& outputs) override
+				std::vector<CompilerTools::LlvmBuilder::Value> inputs,
+				std::vector<CompilerTools::LlvmBuilder::Value>& outputs) override
 			{
 				if (!generator)
 				{
 					//TODO: throw, missing generator function
 				}
-				generator(builder, function flowInputs, flowOutputs, inputs, outputs);
+				generator(entry, builder, function, flowInputs, flowOutputs, inputs, outputs);
 			}
 
-			virtual CompilerTools::Value translate(const PortState* state) override
+			virtual CompilerTools::LlvmBuilder::Value translate(const PortState* state, llvm::LLVMContext& context) override
 			{
-				//TODO: do
+				auto transIt = translations.find(state->getType());
+				if (transIt == translations.end())
+				{
+					//TODO: throw, this should not happen
+				}
+				return transIt->second(state, context);
+			}
+
+			FunctionNodeState(const std::function<GeneratorType>& gen) : generator(gen)
+			{
+				generateTranslations(translations, TypeUtils::SignatureSplitter<T>::ArgumentTypes{});
 			}
 		private:
+			template<typename... Args> static void generateTranslations(CompilerTools::TranslationMapping& trans, TypeUtils::Types<Args...>)
+			{
+				CompilerTools::TranslationsGenerator<Args...>::addTranslation(trans);
+			}
+
+			CompilerTools::TranslationMapping translations;
 			std::function<GeneratorType> generator;
 		};
 
@@ -352,12 +455,12 @@ namespace Noder
 			CompilerTools::LlvmBuilder& builder;
 			std::unordered_set<const Node*> calculatedNodes;
 			std::unordered_set<const Node*> visitedNodes;
-			std::unordered_map<const Node*, std::vector<CompilerTools::Value>> nodeOutputs;
+			std::unordered_map<const Node*, std::vector<CompilerTools::LlvmBuilder::Value>> nodeOutputs;
 
 			CompilerState(CompilerTools::LlvmBuilder& b) : builder(b) {}
 		};
 
-		std::unordered_map<std::string, std::function<std::shared_ptr<NodeState>(const Node&, std::unique_ptr<State>&)>> stateFactories;
+		std::unordered_map<std::string, std::function<std::shared_ptr<NodeState>(const Node&)>> stateFactories;
 		std::unordered_map<const Node*, std::shared_ptr<NodeState>> states;
         std::unique_ptr<Enviroment> env;
 		llvm::LLVMContext context;
@@ -369,8 +472,8 @@ namespace Noder
 			CompilerTools::LlvmBuilder& builder,
 			CompilerTools::LlvmBuilder::Function function,
 			std::vector<CompilerTools::LlvmBuilder::InstructionBlock> entries,
-			std::vector<CompilerTools::Value> inputs,
-			std::vector<CompilerTools::Value>& outputs);
+			std::vector<CompilerTools::LlvmBuilder::Value> inputs,
+			std::vector<CompilerTools::LlvmBuilder::Value>& outputs);
 
 		void generateInstruction(
 			const Node& entry,
