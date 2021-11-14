@@ -112,13 +112,38 @@ namespace Noder
 		std::unique_ptr<Program> program = std::make_unique<Program>(std::make_unique<llvm::Module>(name, context));
 		program->getModule().setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
-		//TODO: calculate signature
 		//assume entry node inputs are function inputs
-		//perform search for single exit point
+		//perform search for single exit point or multiple exit points with same returns
 		//use exit point outputs as function output if it exist, void otherwise
 		//special case: main function, for this case use int as default return type
 
-		auto type = LlvmBuilder::Type::get<void()>(context);
+		//TODO: gather function outputs
+		std::vector<LlvmBuilder::Type> returnTypes {};
+
+		//create return type from given returns
+		auto ret = returnTypes.empty() ? (name == "main" ? LlvmBuilder::Type::get<int>(context) : LlvmBuilder::Type::get<void>(context)).type : [&returnTypes, this]() {
+			//TODO: create tuple from outputs if multiple are present
+			if (returnTypes.size() == 1)
+			{
+				return returnTypes.back().type;
+			}
+			return LlvmBuilder::Type::get<void>(context).type;
+		}();
+
+		//gather intputs from input node
+		std::vector<llvm::Type*> argumentTypes{};
+
+		auto stateIt = states.find(&entry);
+		if (stateIt == states.end())
+		{
+			///TODO: throw missing state
+		}
+		auto base = entry.getBase();
+		argumentTypes.resize(base->inputs.size());
+		for (size_t i = 0; i < base->inputs.size(); ++i)
+			argumentTypes[i] = stateIt->second->translate(base->inputs[i], context).type;
+
+		auto type = llvm::FunctionType::get(ret, argumentTypes, false);
 
 		LlvmBuilder::Function function(name, type, *program);
 
@@ -331,9 +356,7 @@ namespace Noder
 
 		using namespace CompilerTools;
 		LlvmBuilder::InstructionBlock entryBlock(function, "entry");
-		LlvmBuilder::InstructionBlock startBlock(function, "start");
 		builder.setInsertPoint(entryBlock);
-		builder.getBuilder().CreateBr(startBlock.getBlock());
 
 		std::vector<const Node*> entries;
 		entries.emplace_back(&entry);
@@ -403,7 +426,7 @@ namespace Noder
 		}
 		//link start to first node
 		auto packIt = packs.find(&entry);
-		builder.setInsertPoint(startBlock);
+		builder.setInsertPoint(entryBlock);
 		builder.getBuilder().CreateBr(packIt->second.inputs[0].getBlock());
 	}
 

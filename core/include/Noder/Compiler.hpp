@@ -233,7 +233,7 @@ namespace Noder
 				{
 					block = llvm::BasicBlock::Create(function.getFunction()->getContext(), name, function.getFunction(), insertAnchor.block);
 				}
-				InstructionBlock(const InstructionBlock& b): block(b.block) {}
+				InstructionBlock(const InstructionBlock& b) : block(b.block) {}
 			private:
 				llvm::BasicBlock* block;
 			};
@@ -246,7 +246,7 @@ namespace Noder
 					return alloca;
 				}
 
-				Variable(const InstructionBlock& block, const LlvmBuilder::Type& type): alloca(nullptr)
+				Variable(const InstructionBlock& block, const LlvmBuilder::Type& type) : alloca(nullptr)
 				{
 					llvm::IRBuilder<> b(block.getBlock());
 					alloca = b.CreateAlloca(type.type);
@@ -275,21 +275,32 @@ namespace Noder
 		};
 
 		template<typename T, typename = void> struct TypeTranslator {};
-		template<typename T> struct TypeTranslator<T, std::enable_if_t<std::is_integral_v<T>>>
+		template<typename T> struct TypeTranslatorBase
+		{
+			static LlvmBuilder::Type translate(llvm::LLVMContext& context)
+			{
+				return LlvmBuilder::Type::get<T>(context);
+			}
+		};
+		template<typename T> struct TypeTranslator<T, std::enable_if_t<std::is_integral_v<T>>> : public TypeTranslatorBase<T>
 		{
 			static LlvmBuilder::Value translate(T value, llvm::LLVMContext& context)
 			{
 				return LlvmBuilder::Value(llvm::ConstantInt::get(LlvmBuilder::Type::get<T>(context), static_cast<uint64_t>(value), std::is_signed_v<T>));
 			}
 		};
-		template<typename T> struct TypeTranslator<T, std::enable_if_t<std::is_floating_point_v<T>>>
+		template<typename T> struct TypeTranslator<T, std::enable_if_t<std::is_floating_point_v<T>>> : public TypeTranslatorBase<T>
 		{
 			static LlvmBuilder::Value translate(T value, llvm::LLVMContext& context)
 			{
-				return LlvmBuilder::Value(llvm::ConstantFP::get(LlvmBuilder::Type::get<T>(context), static_cast<double>(value)));
+				return LlvmBuilder::Value(llvm::ConstantFP::get(translate(context).type, static_cast<double>(value)));
+			}
+			static LlvmBuilder::Type translate(llvm::LLVMContext& context)
+			{
+				return LlvmBuilder::Type::get<T>(context);
 			}
 		};
-		using TranslationMapping = std::unordered_map<std::type_index, std::function<LlvmBuilder::Value(const PortState * s, llvm::LLVMContext&)>>;
+		using TranslationMapping = std::unordered_map<std::type_index, std::pair<std::function<LlvmBuilder::Value(const PortState* s, llvm::LLVMContext&)>, LlvmBuilder::Type>>;
 		template<typename... Args> struct TranslationsGenerator
 		{
 			static void addTranslation(TranslationMapping& trans) {}
@@ -298,18 +309,18 @@ namespace Noder
 		{
 			static void addTranslation(TranslationMapping& trans)
 			{
-				trans.emplace(typeid(T), [](const PortState* state, llvm::LLVMContext& context)
+				trans.emplace(typeid(T), std::make_pair([](const PortState* state, llvm::LLVMContext& context)
 					{
 						CompilerTools::TypeTranslator<T>::translate(state->getValue<T>(), context);
-					});
+					}, CompilerTools::TypeTranslator<T>::translate(context)));
 				TranslationsGenerator<Args...>::addTranslation(trans);
 			}
 		};
 	}
 
-    class DLLACTION NodeCompiler
-    {
-    public:
+	class DLLACTION NodeCompiler
+	{
+	public:
 		class NodeState
 		{
 		public:
@@ -323,6 +334,7 @@ namespace Noder
 				std::vector<CompilerTools::LlvmBuilder::Value>& outputs) = 0;
 
 			virtual CompilerTools::LlvmBuilder::Value translate(const PortState* state, llvm::LLVMContext& context) = 0;
+			virtual CompilerTools::LlvmBuilder::Type  translate(const Port& port, llvm::LLVMContext& context) = 0;
 		};
 
 		template<typename T> class ObjectNodeState : public NodeState
@@ -383,11 +395,11 @@ namespace Noder
 			return createTemplate(name, inputs, outputs, flowInP, flowOutP, factory);
 		}
 
-		template<typename T> NodeTemplate::Ptr createTemplate(const std::string& name="")
+		template<typename T> NodeTemplate::Ptr createTemplate(const std::string& name = "")
 		{
 			return createTemplate(name, T::ReturnTypes{}, T::ArgumentTypes{}, 0, 0, [](const Node& n) {
 				return std::make_unique<T>(n, state);
-			});
+				});
 		}
 
 		template<typename T> NodeTemplate::Ptr createTemplate(const std::function<GeneratorType>& generator, const std::string& name = "", unsigned flowInP = 0, unsigned flowOutP = 0)
@@ -405,7 +417,7 @@ namespace Noder
 
 		NodeCompiler();
 		NodeCompiler(std::unique_ptr<Enviroment>&&);
-    private:
+	private:
 		template<typename T> class FunctionNodeState : public NodeState
 		{
 		public:
@@ -432,7 +444,16 @@ namespace Noder
 				{
 					//TODO: throw, this should not happen
 				}
-				return transIt->second(state, context);
+				return transIt->second.first(state, context);
+			}
+			virtual CompilerTools::LlvmBuilder::Type translate(const Port& type, llvm::LLVMContext& context) override
+			{
+				auto transIt = translations.find(type.getType());
+				if (transIt == translations.end())
+				{
+					//TODO: throw, this should not happen
+				}
+				return transIt->second.second;
 			}
 
 			FunctionNodeState(const std::function<GeneratorType>& gen) : generator(gen)
@@ -462,7 +483,7 @@ namespace Noder
 
 		std::unordered_map<std::string, std::function<std::shared_ptr<NodeState>(const Node&)>> stateFactories;
 		std::unordered_map<const Node*, std::shared_ptr<NodeState>> states;
-        std::unique_ptr<Enviroment> env;
+		std::unique_ptr<Enviroment> env;
 		llvm::LLVMContext context;
 
 		std::string correctName(const std::string& name);
@@ -486,5 +507,5 @@ namespace Noder
 			const Node& entry,
 			CompilerTools::LlvmBuilder& builder,
 			CompilerTools::LlvmBuilder::Function function);
-    };
+	};
 }
