@@ -148,15 +148,17 @@ namespace Noder
 		stateFactories.clear();
 	}
 
-	void NodeInterpreter::runFrom(const Node& startPoint)
+	const Node& NodeInterpreter::runFrom(const Node& startPoint, bool reset)
 	{
 		std::unordered_set<const Node*> tmp, toReset;
 		const Node* c = &startPoint;
+		const Node* prev = nullptr;
 
 		unsigned redirected = 0;
 
 		while (c != nullptr)
 		{
+			prev = c;
 			NodeState& state = *states.at(c);
 
 			state.resetInternals();
@@ -181,7 +183,9 @@ namespace Noder
 				c = const_cast<Node*>(&portOfNext.getNode());
 			}
 		}
-		resetStates();
+		if (reset)
+			resetStates();
+		return *prev;
 	}
 	void NodeInterpreter::calcNode(const Node& endPoint)
 	{

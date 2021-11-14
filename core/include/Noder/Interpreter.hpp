@@ -344,11 +344,28 @@ namespace Noder
 
 		void resetFactories();
 
-		void runFrom(const Node& startPoint);
+		template<typename T> std::function<T> generate(const Node& startPoint)
+		{
+			using Sig = TypeUtils::SignatureSplitter<T>;
+			return generate<T>(startPoint, Sig::ReturnTypes{}, Sig::ArgumentTypes{});
+		}
+
+		const Node& runFrom(const Node& startPoint, bool reset = true);
 		void calcNode(const Node& endPoint);
 
 		NodeInterpreter();
 		NodeInterpreter(std::unique_ptr<Enviroment>&&);
+	private:
+		template<typename T, typename... Rets, typename... Args> std::function<T> generate(const Node& startPoint, TypeUtils::Types<Rets...>, TypeUtils::Types<Args...>)
+		{
+			return [&startPoint, this](Args...)
+			{
+				const Node& ret = runFrom(startPoint, false);
+				//TODO: prepare return value;
+				resetStates();
+				return TypeUtils::SignatureSplitter<T>::FunctionReturn{};
+			};
+		}
 	};
 }
 

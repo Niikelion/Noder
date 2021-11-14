@@ -838,16 +838,19 @@ namespace Noder
 		{
 			using ReturnTypes = Types<>;
 			using ArgumentTypes = Types<Args...>;
+			using FunctionReturn = void;
 		};
 		template<typename... Rets, typename... Args> struct SignatureSplitter<std::tuple<Rets...>(Args...)>
 		{
 			using ReturnTypes = Types<Rets...>;
 			using ArgumentTypes = Types<Args...>;
+			using FunctionReturn = std::tuple<Rets...>;
 		};
 		template<typename T, typename... Args> struct SignatureSplitter<T(Args...)>
 		{
 			using ReturnTypes = Types<T>;
 			using ArgumentTypes = Types<Args...>;
+			using FunctionReturn = T;
 		};
 	}
 }

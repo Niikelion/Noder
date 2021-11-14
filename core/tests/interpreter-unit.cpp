@@ -171,3 +171,33 @@ TEST_CASE("Interpreter - flow redirection", "[unit],[interpreter]")
 	//NodeTemplate::Ptr readExternalIntT = interpreter.createTemplate();
 	//TODO: do
 }
+
+TEST_CASE("Interpreter - function generation", "[unit],[interpreter]")
+{
+	const std::string str = "test";
+
+	using namespace Noder;
+	INFO("Create interpreter instance.");
+
+	NodeInterpreter interpreter;
+
+	INFO("Create node definitions using existing functions and classes.");
+
+	NodeTemplate::Ptr sinT = interpreter.createTemplate((float_overload)sin);
+
+	INFO("Create nodes and initialize configs.");
+	//nodes from templates using functions
+
+	Node::Ptr sinN1 = interpreter.createNode(sinT);
+
+	float r = 0;
+
+	INFO("Run node program from function wrapper and check result");
+	REQUIRE_NOTHROW([&]()
+		{
+			auto fun = interpreter.generate<float(float)>(*sinN1);
+			r = fun(0);
+		}());
+
+	REQUIRE(std::abs(r) < 0.000001f);
+}
