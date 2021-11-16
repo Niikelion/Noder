@@ -14,11 +14,13 @@ endif()
 
 set(CORE_SOURCES
 	src/Nodes.cpp
+	src/Analysis.cpp
 )
 
 set(CORE_HEADERS
 	include/Noder/Nodes.hpp
 	include/Noder/NodeUtils.hpp
+	include/Noder/Analysis.hpp
 )
 
 set(INTERPRETER_SOURCES

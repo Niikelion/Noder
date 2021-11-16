@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/project-logo.png" alt="guider-logo" width="256" height="256" /></p>
+
 # Noder — Node toolkit
 
 Noder project is collection of tools designed to help you create applications and libraries using nodes instead of code and allows node execution and compilation from code.
