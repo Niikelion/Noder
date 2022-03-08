@@ -70,5 +70,5 @@ noder-cu -h
 
 ## License
 
-Source code of Noder Core is licensed under MIT License.
+Source code of Noder Core is licensed under [MIT](LICENSE) License.
 License of every tool is located in root directory of that tool.
